@@ -49,13 +49,14 @@ LIMITS = {'vpd': 3,
 PACIFIC = pytz.timezone('US/Pacific')
 
 
-def error_distribution(stations, station_data, results, out_data, resids, station_type='ec', check_dir=None, plot_dir=None):
+def residuals(stations, station_data, results, out_data, resids, station_type='ec', check_dir=None, plot_dir=None):
     kw = station_par_map(station_type)
     station_list = pd.read_csv(stations, index_col=kw['index'])
 
-    errors, res_dct = {}, {v: [] for v in COMPARISON_VARS}
+    errors, all_res_dict = {}, {v: [] for v in COMPARISON_VARS}
     for i, (fid, row) in enumerate(station_list.iterrows()):
 
+        sta_res = {v: [] for v in COMPARISON_VARS}
         print('{} of {}: {}'.format(i + 1, station_list.shape[0], fid))
         try:
             sdf_file = os.path.join(station_data, '{}_output.xlsx'.format(fid))
@@ -96,6 +97,8 @@ def error_distribution(stations, station_data, results, out_data, resids, statio
             asce_params = nldas.parallel_apply(calc_asce_params, zw=_zw, axis=1)
             nldas[['vpd', 'rn', 'u2', 'tmean', 'eto']] = pd.DataFrame(asce_params.tolist(), index=nldas.index)
 
+            res_df = sdf[['eto']].copy()
+
             if check_dir:
                 check_file = os.path.join(check_dir, '{}_nldas_daily.csv'.format(fid))
                 cdf = pd.read_csv(check_file, parse_dates=True, index_col='date')
@@ -111,13 +114,15 @@ def error_distribution(stations, station_data, results, out_data, resids, statio
                 df.dropna(how='any', axis=0, inplace=True)
                 df[n_var] = nldas.loc[df.index, var].values
                 residuals = df[s_var] - df[n_var]
-                res_dct[var].append(list(residuals))
+                res_df[var] = residuals
+                sta_res[var] = list(residuals)
                 mean_ = np.mean(residuals).item()
                 variance = np.var(residuals).item()
                 data_skewness = skew(residuals).item()
                 data_kurtosis = kurtosis(residuals).item()
-                dct[var] = (mean_, variance, data_skewness, data_kurtosis,
-                            [i.strftime('%Y-%m-%d') for i in residuals.index])
+                var_dt = [i.strftime('%Y-%m-%d') for i in residuals.index]
+                dct[var] = (mean_, variance, data_skewness, data_kurtosis, var_dt)
+
                 if plot_dir:
                     plt.figure(figsize=(10, 6))
                     sns.histplot(residuals, kde=True, color='blue')
@@ -138,6 +143,12 @@ def error_distribution(stations, station_data, results, out_data, resids, statio
             nldas = nldas.loc[sdf.index]
             nldas['obs_eto'] = sdf['eto']
             nldas.to_csv(dct['file'])
+
+            res_df['eto'] = sdf['eto'] - nldas['eto']
+            res_df.dropna(how='any', axis=0, inplace=True)
+            dct['resid'] = os.path.join(out_data, 'res_{}.csv'.format(fid))
+            res_df.to_csv(dct['resid'])
+
             errors[fid] = dct.copy()
 
         except Exception as e:
@@ -147,9 +158,9 @@ def error_distribution(stations, station_data, results, out_data, resids, statio
     with open(results, 'w') as dst:
         json.dump(errors, dst, indent=4)
 
-    res_dct = {k: [item for sublist in v for item in sublist] for k, v in res_dct.items()}
+    all_res_dict = {k: [item for sublist in v for item in sublist] for k, v in all_res_dict.items()}
     with open(resids, 'w') as dst:
-        json.dump(res_dct, dst, indent=4)
+        json.dump(all_res_dict, dst, indent=4)
 
 
 def error_propagation(json_file, station_meta, outfile, station_type='ec', num_samples=1000):
@@ -294,8 +305,8 @@ if __name__ == '__main__':
     pandarallel.initialize(nb_workers=4)
 
     ee_check = os.path.join(d, 'weather_station_data_processing/NLDAS_data_at_stations')
-    error_distribution(sta, sta_data, error_json, comp_data, res_json,
-                       station_type='agri', check_dir=None, plot_dir=hist)
+    residuals(sta, sta_data, error_json, comp_data, res_json,
+              station_type='agri', check_dir=None, plot_dir=None)
 
     results_json = os.path.join(d, 'weather_station_data_processing', 'error_analysis',
                                 'error_propagation_etovar_1000.json')
