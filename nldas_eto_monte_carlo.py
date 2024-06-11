@@ -1,3 +1,4 @@
+import datetime
 import json
 import os
 import warnings
@@ -7,9 +8,12 @@ import pandas as pd
 from pandarallel import pandarallel
 from refet import Daily
 from scipy.stats import norm
-
+import statsmodels.api as sm
+from scipy.linalg import cholesky
+from statsmodels.tsa.stattools import acf
 from nldas_eto_sensitivity import COMPARISON_VARS
 from nldas_eto_sensitivity import station_par_map
+from statsmodels.tsa.api import VAR
 
 warnings.simplefilter(action='ignore', category=FutureWarning)
 
@@ -36,11 +40,17 @@ def error_propagation(json_file, station_meta, outfile, station_type='ec', num_s
         print('{} of {}: {}'.format(j + 1, len(station_list.keys()), station))
 
         file_ = errors.pop('file')
+        resid_file = errors.pop('resid')
         if not os.path.exists(file_):
             file_ = file_.replace('/home/dgketchum/data', '/media/research')
+            resid_file = resid_file.replace('/home/dgketchum/data', '/media/research')
+
         nldas = pd.read_csv(file_, parse_dates=True, index_col='date')
         nldas.index = pd.DatetimeIndex([i.strftime('%Y-%m-%d') for i in nldas.index])
         station_results = {var: [] for var in COMPARISON_VARS}
+
+        cross_corr_obs = np.corrcoef(nldas[COMPARISON_VARS].values, rowvar=False)
+        auto_corrs_obs = [acf(nldas[COMPARISON_VARS].values[:, i]) for i in range(4)]
 
         def calc_eto(r, mod_var, mod_vals):
             # modify the error-perturbed values with setattr
@@ -59,28 +69,42 @@ def error_propagation(json_file, station_meta, outfile, station_type='ec', num_s
 
             return asce.eto()[0]
 
+        res_df = pd.read_csv(resid_file, parse_dates=True, index_col='date')
+        res_df.index = [datetime.date(i.year, i.month, i.day) for i in res_df.index]
+        res_df.dropna(how='any', axis=0, inplace=True)
+        model = VAR(res_df)
+        model = model.fit(maxlags=1, ic='aic')
+
         for var in COMPARISON_VARS:
 
             if first:
                 out_vars.append(var)
 
             result = []
-            mean_, variance, data_skewness, data_kurtosis, dates = errors[var]
-            dates = pd.DatetimeIndex(dates)
-            stddev = np.sqrt(variance)
 
             if var == 'eto':
-                eto_arr = nldas.loc[dates, var].values
+                eto_arr = nldas.loc[res_df.index, var].values
                 station_results[var] = np.mean(eto_arr), np.std(eto_arr)
                 continue
 
             for i in range(num_samples):
-                perturbed_nldas = nldas.loc[dates].copy()
-                error = norm.rvs(loc=mean_, scale=stddev, size=perturbed_nldas.shape[0])
-                perturbed_nldas[var] += error
+                perturbed_nldas = nldas.loc[res_df.index].copy()
+                error = model.simulate_var(res_df.shape[0])
+                error = pd.DataFrame(columns=res_df.columns, data=error, index=res_df.index)
+
+                if i == 0:
+                    perturbed_nldas += error
+                    cross_corr_sim = np.corrcoef(perturbed_nldas[COMPARISON_VARS].values, rowvar=False)
+                    auto_corrs_sim = [acf(perturbed_nldas[COMPARISON_VARS].values[:, i]) for i in range(4)]
+                    sim_db = sm.stats.durbin_watson(error[var])
+                    obs_db = sm.stats.durbin_watson(nldas[var])
+                    print('Durbin-Watson {}: obs {:.2f}, sim {:.2f}'.format(var, obs_db, sim_db))
+
+                else:
+                    perturbed_nldas[var] += error[var]
+
                 eto_values = perturbed_nldas.parallel_apply(calc_eto, mod_var=var,
-                                                            mod_vals=perturbed_nldas[var].values,
-                                                            axis=1)
+                                                            mod_vals=perturbed_nldas[var].values, axis=1)
                 result.append((eto_values.mean(), perturbed_nldas[var].mean()))
 
             station_results[var] = result
@@ -102,24 +126,13 @@ if __name__ == '__main__':
     if not os.path.isdir(d):
         d = '/home/dgketchum/data/IrrigationGIS/milk'
 
-    # sta = os.path.join(d, '/eddy_covariance_data_processing/eddy_covariance_stations.csv'
     sta = os.path.join(d, 'bias_ratio_data_processing/ETo/'
                           'final_milk_river_metadata_nldas_eto_bias_ratios_long_term_mean.csv')
-    sta_data = os.path.join(d, 'weather_station_data_processing/corrected_data')
-    comp_data = os.path.join(d, 'weather_station_data_processing/comparison_data')
-
-    # error_json = os.path.join(d, 'eddy_covariance_nldas_analysis', 'error_distributions.json')
     error_json = os.path.join(d, 'weather_station_data_processing', 'error_analysis', 'error_distributions.json')
-    res_json = os.path.join(d, 'weather_station_data_processing', 'error_analysis', 'residuals.json')
-    hist = os.path.join(d, 'weather_station_data_processing', 'error_analysis', 'residual_histograms')
 
     pandarallel.initialize(nb_workers=4)
 
-    ee_check = os.path.join(d, 'weather_station_data_processing/NLDAS_data_at_stations')
-    residuals(sta, sta_data, error_json, comp_data, res_json,
-              station_type='agri', check_dir=None, plot_dir=None)
-
     results_json = os.path.join(d, 'weather_station_data_processing', 'error_analysis',
-                                'error_propagation_etovar_1000.json')
-    # error_propagation(error_json, sta, results_json, station_type='agri', num_samples=1000)
+                                'error_propagation_etovar_10.json')
+    error_propagation(error_json, sta, results_json, station_type='agri', num_samples=10)
 # ========================= EOF ====================================================================
