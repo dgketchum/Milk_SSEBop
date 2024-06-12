@@ -27,8 +27,6 @@ def mc_timeseries_draw(json_file, station_meta, outfile, station_type='ec', num_
 
     station_list = pd.read_csv(station_meta, index_col=kw['index'])
 
-    first, out_vars = True, []
-
     for j, (station, row) in enumerate(station_list.iterrows()):
 
         errors = error_distributions[station]
@@ -36,7 +34,7 @@ def mc_timeseries_draw(json_file, station_meta, outfile, station_type='ec', num_
             print('Skipping station {} due to previous exception.'.format(station))
             continue
 
-        print('\n{} of {}: {}'.format(j + 1, len(station_list.keys()), station))
+        print('{} of {}: {}'.format(j + 1, station_list.shape[0], station))
 
         file_ = errors.pop('file')
         resid_file = errors.pop('resid')
@@ -46,11 +44,6 @@ def mc_timeseries_draw(json_file, station_meta, outfile, station_type='ec', num_
 
         nldas = pd.read_csv(file_, parse_dates=True, index_col='date')
         nldas.index = pd.DatetimeIndex([i.strftime('%Y-%m-%d') for i in nldas.index])
-
-        station_results = {var: [] for var in COMPARISON_VARS}
-
-        cross_corr_obs = np.corrcoef(nldas[COMPARISON_VARS[:4]].values, rowvar=False)
-        auto_corrs_obs = [acf(nldas[COMPARISON_VARS[:4]].values[:, i]) for i in range(4)]
 
         def calc_eto(r, mod_var, mod_vals):
             # modify the error-perturbed values with setattr
@@ -75,12 +68,10 @@ def mc_timeseries_draw(json_file, station_meta, outfile, station_type='ec', num_
 
         eto_arr = nldas.loc[res_df.index, 'eto'].values
 
-        for j, var in enumerate(COMPARISON_VARS[:4]):
+        metvars = COMPARISON_VARS[:4]
+        result = {k: [] for k in metvars}
 
-            if first:
-                out_vars.append(var)
-
-            result = []
+        for var in metvars:
 
             for i in range(num_samples):
                 perturbed_nldas = nldas.loc[res_df.index].copy()
@@ -100,50 +91,37 @@ def mc_timeseries_draw(json_file, station_meta, outfile, station_type='ec', num_
 
                 res = eto_sim - eto_arr
                 variance = np.var(res, ddof=1)
+                result[var].append((res.mean(), variance))
 
-                result.append((eto_sim.mean(), perturbed_nldas[var].mean()))
-
-            station_results[var] = result
-
-        results[station] = station_results
-
-        first = False
-
-        break
+        results[station] = result
 
     with open(outfile, 'w') as f:
         json.dump(results, f, indent=4)
 
 
-def variance_decomposition(json_file, resids, station_meta, outfile, station_type='ec'):
+def variance_decomposition(sim_results, station_meta, station_type='ec'):
     kw = station_par_map(station_type)
 
-    with open(resids, 'r') as f:
-        residuals = json.load(f)
+    with open(sim_results, 'r') as f:
+        sim_results = json.load(f)
 
-    with open(json_file, 'r') as f:
-        mc_results = json.load(f)
-
-    results = {}
-
+    metvars = COMPARISON_VARS[:4]
     station_list = pd.read_csv(station_meta, index_col=kw['index'])
-
-    first, out_vars = True, []
+    var_sums = {k: 0. for k in metvars}
+    all = 0.0
 
     for j, (station, row) in enumerate(station_list.iterrows()):
 
-        nldas_file = residuals[station].pop('file')
-        if not os.path.exists(nldas_file):
-            nldas_file = nldas_file.replace('/media/research', '/home/dgketchum/data')
+        for var in metvars:
+            try:
+                sum_var = sum(np.array([i[1] for i in sim_results[station][var]]))
+                var_sums[var] += sum_var
+                all += sum_var
+            except KeyError:
+                print('Error: {}'.format(station))
 
-        nldas = pd.read_csv(nldas_file, parse_dates=True, index_col='date')
-        nldas.index = [datetime.date(i.year, i.month, i.day) for i in nldas.index]
-        nldas.dropna(how='any', axis=0, inplace=True)
-
-        errors = mc_results[station]
-        if errors == 'exception':
-            print('Skipping station {} due to previous exception.'.format(station))
-            continue
+    decomp = {k: var_sums[v] / all for k, v in var_sums.items()}
+    print(decomp)
 
 
 if __name__ == '__main__':
@@ -158,11 +136,9 @@ if __name__ == '__main__':
 
     pandarallel.initialize(nb_workers=4)
 
-    results_json = os.path.join(d, 'weather_station_data_processing', 'error_analysis',
-                                'error_propagation_etovar_100_fft.json')
-    mc_timeseries_draw(error_json, sta, results_json, station_type='agri', num_samples=10)
+    num_sampl_ = 10
+    variance_json = os.path.join(d, 'weather_station_data_processing', 'error_analysis',
+                                 'eto_variance_{}.json'.format(num_sampl_))
 
-    decomp_out = os.path.join(d, 'weather_station_data_processing', 'error_analysis',
-                              'error_propagation_variance_decomp.json')
-    # variance_decomposition(results_json, error_json, sta, decomp_out, station_type='agri')
+    variance_decomposition(variance_json, sta, station_type='agri')
 # ========================= EOF ====================================================================
