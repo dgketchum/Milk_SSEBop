@@ -1,26 +1,17 @@
-import os
 import json
+import os
 
-import numpy as np
-import seaborn as sns
 import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
+import seaborn as sns
+import statsmodels.api as sm
 from scipy.stats import skew, kurtosis
 
-LIMITS = {'vpd': 3,
-          'rn': 0.8,
-          'u2': 12,
-          'tmean': 12.5,
-          'eto': 5}
-
-STR_MAP = {'rn': 'Net Radiation [MJ m-2 d-1]',
-           'vpd': 'Vapor Pressure Deficit [kPa]',
-           'tmean': 'Mean Daily Temperature [K]',
-           'u2': 'Wind Speed at 2 m [m sec-1]',
-           'eto': 'ASCE Grass Reference Evapotranspiration [mm]'}
+from nldas_eto_sensitivity import LIMITS, STR_MAP, COMPARISON_VARS
 
 
 def plot_residual_histograms(resids_file, plot_dir):
-
     with open(resids_file, 'r') as f:
         res_dct = json.load(f)
 
