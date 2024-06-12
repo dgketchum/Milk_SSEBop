@@ -5,15 +5,14 @@ import warnings
 
 import numpy as np
 import pandas as pd
+import statsmodels.api as sm
+from numpy.fft import fft, ifft
 from pandarallel import pandarallel
 from refet import Daily
-from scipy.stats import norm
-import statsmodels.api as sm
-from scipy.linalg import cholesky
 from statsmodels.tsa.stattools import acf
+
 from nldas_eto_sensitivity import COMPARISON_VARS
 from nldas_eto_sensitivity import station_par_map
-from statsmodels.tsa.api import VAR
 
 warnings.simplefilter(action='ignore', category=FutureWarning)
 
@@ -37,20 +36,20 @@ def error_propagation(json_file, station_meta, outfile, station_type='ec', num_s
             print('Skipping station {} due to previous exception.'.format(station))
             continue
 
-        print('{} of {}: {}'.format(j + 1, len(station_list.keys()), station))
+        print('\n{} of {}: {}'.format(j + 1, len(station_list.keys()), station))
 
         file_ = errors.pop('file')
         resid_file = errors.pop('resid')
         if not os.path.exists(file_):
-            file_ = file_.replace('/home/dgketchum/data', '/media/research')
-            resid_file = resid_file.replace('/home/dgketchum/data', '/media/research')
+            file_ = file_.replace('/media/research', '/home/dgketchum/data')
+            resid_file = resid_file.replace('/media/research', '/home/dgketchum/data')
 
         nldas = pd.read_csv(file_, parse_dates=True, index_col='date')
         nldas.index = pd.DatetimeIndex([i.strftime('%Y-%m-%d') for i in nldas.index])
         station_results = {var: [] for var in COMPARISON_VARS}
 
-        cross_corr_obs = np.corrcoef(nldas[COMPARISON_VARS].values, rowvar=False)
-        auto_corrs_obs = [acf(nldas[COMPARISON_VARS].values[:, i]) for i in range(4)]
+        cross_corr_obs = np.corrcoef(nldas[COMPARISON_VARS[:4]].values, rowvar=False)
+        auto_corrs_obs = [acf(nldas[COMPARISON_VARS[:4]].values[:, i]) for i in range(4)]
 
         def calc_eto(r, mod_var, mod_vals):
             # modify the error-perturbed values with setattr
@@ -72,10 +71,8 @@ def error_propagation(json_file, station_meta, outfile, station_type='ec', num_s
         res_df = pd.read_csv(resid_file, parse_dates=True, index_col='date')
         res_df.index = [datetime.date(i.year, i.month, i.day) for i in res_df.index]
         res_df.dropna(how='any', axis=0, inplace=True)
-        model = VAR(res_df)
-        model = model.fit(maxlags=1, ic='aic')
 
-        for var in COMPARISON_VARS:
+        for j, var in enumerate(COMPARISON_VARS[:4]):
 
             if first:
                 out_vars.append(var)
@@ -89,19 +86,21 @@ def error_propagation(json_file, station_meta, outfile, station_type='ec', num_s
 
             for i in range(num_samples):
                 perturbed_nldas = nldas.loc[res_df.index].copy()
-                error = model.simulate_var(res_df.shape[0])
-                error = pd.DataFrame(columns=res_df.columns, data=error, index=res_df.index)
+
+                original_acf = auto_corrs_obs[j]
+                padded_acf = np.zeros(res_df.shape[0])
+                padded_acf[:len(original_acf)] = original_acf
+                psd = np.abs(fft(padded_acf))
+                random_phases = np.exp(2j * np.pi * np.random.rand(res_df.shape[0]))
+                complex_spectrum = np.sqrt(psd) * random_phases
+                error = np.real(ifft(complex_spectrum))
+                perturbed_nldas[var] += error
 
                 if i == 0:
-                    perturbed_nldas += error
-                    cross_corr_sim = np.corrcoef(perturbed_nldas[COMPARISON_VARS].values, rowvar=False)
-                    auto_corrs_sim = [acf(perturbed_nldas[COMPARISON_VARS].values[:, i]) for i in range(4)]
-                    sim_db = sm.stats.durbin_watson(error[var])
+                    cross_corr_sim = np.corrcoef(perturbed_nldas[COMPARISON_VARS[:4]].values, rowvar=False)
+                    sim_db = sm.stats.durbin_watson(perturbed_nldas[var])
                     obs_db = sm.stats.durbin_watson(nldas[var])
                     print('Durbin-Watson {}: obs {:.2f}, sim {:.2f}'.format(var, obs_db, sim_db))
-
-                else:
-                    perturbed_nldas[var] += error[var]
 
                 eto_values = perturbed_nldas.parallel_apply(calc_eto, mod_var=var,
                                                             mod_vals=perturbed_nldas[var].values, axis=1)
@@ -112,9 +111,6 @@ def error_propagation(json_file, station_meta, outfile, station_type='ec', num_s
         results[station] = station_results
 
         first = False
-
-        if j > 1:
-            break
 
     with open(outfile, 'w') as f:
         json.dump(results, f, indent=4)
@@ -133,6 +129,6 @@ if __name__ == '__main__':
     pandarallel.initialize(nb_workers=4)
 
     results_json = os.path.join(d, 'weather_station_data_processing', 'error_analysis',
-                                'error_propagation_etovar_10.json')
-    error_propagation(error_json, sta, results_json, station_type='agri', num_samples=10)
+                                'error_propagation_etovar_100_fft.json')
+    error_propagation(error_json, sta, results_json, station_type='agri', num_samples=100)
 # ========================= EOF ====================================================================
