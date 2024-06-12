@@ -13,6 +13,7 @@ from pandarallel import pandarallel
 from refet import Daily, calcs
 from scipy.stats import skew, kurtosis, norm
 
+
 warnings.simplefilter(action='ignore', category=FutureWarning)
 
 VAR_MAP = {'rsds': 'Rs (w/m2)',
@@ -32,7 +33,7 @@ RESAMPLE_MAP = {'rsds': 'mean',
 
 RENAME_MAP = {v: k for k, v in VAR_MAP.items()}
 
-COMPARISON_VARS = ['rn', 'vpd', 'tmean', 'u2', 'eto']
+COMPARISON_VARS = ['vpd', 'rn', 'tmean', 'u2', 'eto']
 
 STR_MAP = {'rn': 'Net Radiation [MJ m-2 d-1]',
            'vpd': 'Vapor Pressure Deficit [kPa]',
@@ -145,7 +146,6 @@ def residuals(stations, station_data, results, out_data, resids, station_type='e
             nldas.to_csv(dct['file'])
 
             res_df['eto'] = sdf['eto'] - nldas['eto']
-            res_df.dropna(how='any', axis=0, inplace=True)
             dct['resid'] = os.path.join(out_data, 'res_{}.csv'.format(fid))
             res_df.to_csv(dct['resid'])
 
@@ -161,88 +161,6 @@ def residuals(stations, station_data, results, out_data, resids, station_type='e
     all_res_dict = {k: [item for sublist in v for item in sublist] for k, v in all_res_dict.items()}
     with open(resids, 'w') as dst:
         json.dump(all_res_dict, dst, indent=4)
-
-
-def error_propagation(json_file, station_meta, outfile, station_type='ec', num_samples=1000):
-    kw = station_par_map(station_type)
-
-    with open(json_file, 'r') as f:
-        error_distributions = json.load(f)
-
-    results = {}
-
-    station_list = pd.read_csv(station_meta, index_col=kw['index'])
-
-    first, out_vars = True, []
-
-    for j, (station, row) in enumerate(station_list.iterrows()):
-
-        errors = error_distributions[station]
-        if errors == 'exception':
-            print('Skipping station {} due to previous exception.'.format(station))
-            continue
-
-        print('{} of {}: {}'.format(j + 1, len(station_list.keys()), station))
-
-        file_ = errors.pop('file')
-        if not os.path.exists(file_):
-            file_ = file_.replace('/home/dgketchum/data', '/media/research')
-        nldas = pd.read_csv(file_, parse_dates=True, index_col='date')
-        nldas.index = pd.DatetimeIndex([i.strftime('%Y-%m-%d') for i in nldas.index])
-        station_results = {var: [] for var in COMPARISON_VARS}
-
-        def calc_eto(r, mod_var, mod_vals):
-            # modify the error-perturbed values with setattr
-            asce = Daily(
-                tmin=r['min_temp'],
-                tmax=r['max_temp'],
-                ea=r['ea'],
-                rs=r['rsds'] * 0.0036,
-                uz=r['u2'],
-                zw=2.0,
-                doy=r['doy'],
-                elev=row[kw['elev']],
-                lat=row[kw['lat']])
-
-            setattr(asce, mod_var, mod_vals)
-
-            return asce.eto()[0]
-
-        for var in COMPARISON_VARS:
-
-            if first:
-                out_vars.append(var)
-
-            result = []
-            mean_, variance, data_skewness, data_kurtosis, dates = errors[var]
-            dates = pd.DatetimeIndex(dates)
-            stddev = np.sqrt(variance)
-
-            if var == 'eto':
-                eto_arr = nldas.loc[dates, var].values
-                station_results[var] = np.mean(eto_arr), np.std(eto_arr)
-                continue
-
-            for i in range(num_samples):
-                perturbed_nldas = nldas.loc[dates].copy()
-                error = norm.rvs(loc=mean_, scale=stddev, size=perturbed_nldas.shape[0])
-                perturbed_nldas[var] += error
-                eto_values = perturbed_nldas.parallel_apply(calc_eto, mod_var=var,
-                                                            mod_vals=perturbed_nldas[var].values,
-                                                            axis=1)
-                result.append((eto_values.mean(), perturbed_nldas[var].mean()))
-
-            station_results[var] = result
-
-        results[station] = station_results
-
-        first = False
-
-        if j > 1:
-            break
-
-    with open(outfile, 'w') as f:
-        json.dump(results, f, indent=4)
 
 
 def station_par_map(station_type):
