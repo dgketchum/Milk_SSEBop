@@ -17,7 +17,7 @@ from nldas_eto_sensitivity import station_par_map
 warnings.simplefilter(action='ignore', category=FutureWarning)
 
 
-def error_propagation(json_file, station_meta, outfile, station_type='ec', num_samples=1000):
+def mc_timeseries_draw(json_file, station_meta, outfile, station_type='ec', num_samples=1000):
     kw = station_par_map(station_type)
 
     with open(json_file, 'r') as f:
@@ -46,6 +46,7 @@ def error_propagation(json_file, station_meta, outfile, station_type='ec', num_s
 
         nldas = pd.read_csv(file_, parse_dates=True, index_col='date')
         nldas.index = pd.DatetimeIndex([i.strftime('%Y-%m-%d') for i in nldas.index])
+
         station_results = {var: [] for var in COMPARISON_VARS}
 
         cross_corr_obs = np.corrcoef(nldas[COMPARISON_VARS[:4]].values, rowvar=False)
@@ -72,6 +73,8 @@ def error_propagation(json_file, station_meta, outfile, station_type='ec', num_s
         res_df.index = [datetime.date(i.year, i.month, i.day) for i in res_df.index]
         res_df.dropna(how='any', axis=0, inplace=True)
 
+        eto_arr = nldas.loc[res_df.index, 'eto'].values
+
         for j, var in enumerate(COMPARISON_VARS[:4]):
 
             if first:
@@ -79,32 +82,26 @@ def error_propagation(json_file, station_meta, outfile, station_type='ec', num_s
 
             result = []
 
-            if var == 'eto':
-                eto_arr = nldas.loc[res_df.index, var].values
-                station_results[var] = np.mean(eto_arr), np.std(eto_arr)
-                continue
-
             for i in range(num_samples):
                 perturbed_nldas = nldas.loc[res_df.index].copy()
-
-                original_acf = auto_corrs_obs[j]
-                padded_acf = np.zeros(res_df.shape[0])
-                padded_acf[:len(original_acf)] = original_acf
-                psd = np.abs(fft(padded_acf))
-                random_phases = np.exp(2j * np.pi * np.random.rand(res_df.shape[0]))
-                complex_spectrum = np.sqrt(psd) * random_phases
-                error = np.real(ifft(complex_spectrum))
+                fft_residuals = fft(res_df[var].values)
+                random_phases = np.exp(2j * np.pi * np.random.rand(len(res_df.index)))
+                fft_randomized = fft_residuals * random_phases
+                error = ifft(fft_randomized).real
                 perturbed_nldas[var] += error
 
                 if i == 0:
-                    cross_corr_sim = np.corrcoef(perturbed_nldas[COMPARISON_VARS[:4]].values, rowvar=False)
                     sim_db = sm.stats.durbin_watson(perturbed_nldas[var])
                     obs_db = sm.stats.durbin_watson(nldas[var])
                     print('Durbin-Watson {}: obs {:.2f}, sim {:.2f}'.format(var, obs_db, sim_db))
 
-                eto_values = perturbed_nldas.parallel_apply(calc_eto, mod_var=var,
-                                                            mod_vals=perturbed_nldas[var].values, axis=1)
-                result.append((eto_values.mean(), perturbed_nldas[var].mean()))
+                eto_sim = perturbed_nldas.parallel_apply(calc_eto, mod_var=var,
+                                                         mod_vals=perturbed_nldas[var].values, axis=1).values
+
+                res = eto_sim - eto_arr
+                variance = np.var(res, ddof=1)
+
+                result.append((eto_sim.mean(), perturbed_nldas[var].mean()))
 
             station_results[var] = result
 
@@ -112,8 +109,41 @@ def error_propagation(json_file, station_meta, outfile, station_type='ec', num_s
 
         first = False
 
+        break
+
     with open(outfile, 'w') as f:
         json.dump(results, f, indent=4)
+
+
+def variance_decomposition(json_file, resids, station_meta, outfile, station_type='ec'):
+    kw = station_par_map(station_type)
+
+    with open(resids, 'r') as f:
+        residuals = json.load(f)
+
+    with open(json_file, 'r') as f:
+        mc_results = json.load(f)
+
+    results = {}
+
+    station_list = pd.read_csv(station_meta, index_col=kw['index'])
+
+    first, out_vars = True, []
+
+    for j, (station, row) in enumerate(station_list.iterrows()):
+
+        nldas_file = residuals[station].pop('file')
+        if not os.path.exists(nldas_file):
+            nldas_file = nldas_file.replace('/media/research', '/home/dgketchum/data')
+
+        nldas = pd.read_csv(nldas_file, parse_dates=True, index_col='date')
+        nldas.index = [datetime.date(i.year, i.month, i.day) for i in nldas.index]
+        nldas.dropna(how='any', axis=0, inplace=True)
+
+        errors = mc_results[station]
+        if errors == 'exception':
+            print('Skipping station {} due to previous exception.'.format(station))
+            continue
 
 
 if __name__ == '__main__':
@@ -130,5 +160,9 @@ if __name__ == '__main__':
 
     results_json = os.path.join(d, 'weather_station_data_processing', 'error_analysis',
                                 'error_propagation_etovar_100_fft.json')
-    error_propagation(error_json, sta, results_json, station_type='agri', num_samples=100)
+    mc_timeseries_draw(error_json, sta, results_json, station_type='agri', num_samples=10)
+
+    decomp_out = os.path.join(d, 'weather_station_data_processing', 'error_analysis',
+                              'error_propagation_variance_decomp.json')
+    # variance_decomposition(results_json, error_json, sta, decomp_out, station_type='agri')
 # ========================= EOF ====================================================================
