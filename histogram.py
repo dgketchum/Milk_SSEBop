@@ -8,7 +8,7 @@ import seaborn as sns
 import statsmodels.api as sm
 from scipy.stats import skew, kurtosis
 
-from nldas_eto_sensitivity import LIMITS, STR_MAP, COMPARISON_VARS
+from nldas_eto_error import LIMITS, STR_MAP, COMPARISON_VARS
 
 
 def plot_residual_histograms(resids_file, plot_dir):
