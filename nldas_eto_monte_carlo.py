@@ -11,8 +11,8 @@ from pandarallel import pandarallel
 from refet import Daily
 from statsmodels.tsa.stattools import acf
 
-from nldas_eto_sensitivity import COMPARISON_VARS
-from nldas_eto_sensitivity import station_par_map
+from nldas_eto_error import COMPARISON_VARS
+from nldas_eto_error import station_par_map
 
 warnings.simplefilter(action='ignore', category=FutureWarning)
 
@@ -120,7 +120,7 @@ def variance_decomposition(sim_results, station_meta, station_type='ec'):
             except KeyError:
                 print('Error: {}'.format(station))
 
-    decomp = {k: var_sums[v] / all for k, v in var_sums.items()}
+    decomp = {k: '{:.2f}'.format(v / all) for k, v in var_sums.items()}
     print(decomp)
 
 
@@ -136,9 +136,12 @@ if __name__ == '__main__':
 
     pandarallel.initialize(nb_workers=4)
 
-    num_sampl_ = 10
+    num_sampl_ = 1000
     variance_json = os.path.join(d, 'weather_station_data_processing', 'error_analysis',
                                  'eto_variance_{}.json'.format(num_sampl_))
 
+    mc_timeseries_draw(error_json, sta, variance_json, station_type='agri', num_samples=num_sampl_)
+
     variance_decomposition(variance_json, sta, station_type='agri')
+
 # ========================= EOF ====================================================================
