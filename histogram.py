@@ -11,7 +11,7 @@ from scipy.stats import skew, kurtosis
 from nldas_eto_error import LIMITS, STR_MAP, COMPARISON_VARS
 
 
-def plot_residual_histograms(resids_file, plot_dir):
+def plot_residual_met_histograms(resids_file, plot_dir):
     with open(resids_file, 'r') as f:
         res_dct = json.load(f)
 
@@ -55,9 +55,10 @@ if __name__ == '__main__':
     if not os.path.isdir(d):
         d = '/home/dgketchum/data/IrrigationGIS/milk'
 
-    res_json = os.path.join(d, 'weather_station_data_processing', 'error_analysis', 'residuals.json')
+    met_residuals = os.path.join(d, 'weather_station_data_processing', 'error_analysis', 'residuals.json')
+
     hist = os.path.join(d, 'weather_station_data_processing', 'error_analysis', 'residual_histograms')
 
-    plot_residual_histograms(res_json, hist)
+    plot_residual_met_histograms(met_residuals, hist)
 
 # ========================= EOF ====================================================================
