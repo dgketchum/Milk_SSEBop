@@ -57,23 +57,29 @@ def mc_timeseries_draw(json_file, station_meta, outfile, num_samples=1000):
 
             residuals = res_df['{}_res'.format(var)].values
 
-            if var == 'eto':
-                a, b, loc, scale = st.johnsonsu.fit(residuals)
-                dist = st.johnsonsu(a, b, loc=loc, scale=scale)
-            else:
-                lower_bound = 0.
-                upper_bound = 1.2
-                mean, std = st.norm.fit(residuals)
-                a, b = (lower_bound - mean) / std, (upper_bound - mean) / std
-                dist = st.truncnorm(a, b, loc=mean, scale=std)
+            a, b, loc, scale = st.johnsonsu.fit(residuals)
+            dist = st.johnsonsu(a, b, loc=loc, scale=scale)
+
+            vals = res_df[col].values
 
             for i in range(num_samples):
 
-                error = []
+                error, e = [], -1000
+
                 for j in range(df.shape[0]):
-                    e = -1
-                    while 0 > e or e > 1.25:
-                        e = dist.rvs(1)[0]
+
+                    val = vals[j] + e
+
+                    if var == 'eto':
+                        while 0 > val:
+                            e = dist.rvs(1)[0]
+                            val = vals[j] + e
+
+                    else:
+                        while 0 > val or val > 1.25:
+                            e = dist.rvs(1)[0]
+                            val = vals[j] + e
+
                     error.append(e)
 
                 perturbed = res_df.copy()
@@ -97,7 +103,7 @@ def variance_decomposition(sim_results, station_meta):
     with open(sim_results, 'r') as f:
         sim_results = json.load(f)
 
-    vars = ['eta', 'eto']
+    vars = ['etf', 'eto']
     station_list = pd.read_csv(station_meta, index_col=kw['index'])
     var_sums = {k: 0. for k in vars}
     all = 0.0
@@ -107,7 +113,7 @@ def variance_decomposition(sim_results, station_meta):
         for var in vars:
             try:
 
-                sum_var = sum(np.array([i[1] for i in sim_results[station][var]]))
+                sum_var = sum(np.array([i[-1] for i in sim_results[station][var]]))
                 var_sums[var] += sum_var
                 all += sum_var
             except KeyError:
@@ -115,6 +121,7 @@ def variance_decomposition(sim_results, station_meta):
 
     decomp = {k: '{:.2f}'.format(v / all) for k, v in var_sums.items()}
     print(decomp)
+    # {'etf': '0.58', 'eto': '0.42'}
 
 
 if __name__ == '__main__':
@@ -130,10 +137,9 @@ if __name__ == '__main__':
     sta_data = os.path.join(d, 'eddy_covariance_data_processing', 'corrected_data')
     ssebop_data = os.path.join(d, 'validation', 'daily_overpass_date_ssebop_et_at_eddy_covar_sites')
 
+    num_sample_ = 1000
     error_json = os.path.join(d, 'validation', 'error_analysis', 'ec_comparison.json')
-    var_json = os.path.join(d, 'validation', 'error_analysis', 'ec_variance_{}.json.json')
-
-    num_sample_ = 10
+    var_json = os.path.join(d, 'validation', 'error_analysis', 'ec_variance_{}.json'.format(num_sample_))
 
     mc_timeseries_draw(error_json, sta, var_json, num_samples=num_sample_)
 

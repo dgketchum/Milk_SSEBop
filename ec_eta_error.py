@@ -108,7 +108,8 @@ def ec_comparison(stations, station_data, ssebop_dir, out_file):
             'eta_obs': df['eta_obs'].tolist(),
             'eta_ssebop': df['eta_ssebop'].tolist(),
             'eto_obs': df['eto_obs'].tolist(),
-            'eto_nldas': df['eto_nldas'].tolist()}
+            'eto_nldas': df['eto_nldas'].tolist(),
+            'dates': [i.strftime('%Y-%m-%d') for i in df.index]}
 
     with open(out_file, 'w') as f:
         json.dump(results_dict, f, indent=4)
