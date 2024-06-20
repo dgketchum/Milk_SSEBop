@@ -9,7 +9,6 @@ import statsmodels.api as sm
 from numpy.fft import fft, ifft
 from pandarallel import pandarallel
 from refet import Daily
-from statsmodels.tsa.stattools import acf
 
 from nldas_eto_error import COMPARISON_VARS
 from nldas_eto_error import station_par_map
@@ -136,11 +135,11 @@ if __name__ == '__main__':
 
     pandarallel.initialize(nb_workers=4)
 
-    num_sampl_ = 1000
+    num_sampl_ = 2
     variance_json = os.path.join(d, 'weather_station_data_processing', 'error_analysis',
                                  'eto_variance_{}.json'.format(num_sampl_))
 
-    mc_timeseries_draw(error_json, sta, variance_json, station_type='agri', num_samples=num_sampl_)
+    # mc_timeseries_draw(error_json, sta, variance_json, station_type='agri', num_samples=num_sampl_)
 
     variance_decomposition(variance_json, sta, station_type='agri')
 
