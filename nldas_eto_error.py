@@ -91,11 +91,11 @@ def residuals(stations, station_data, results, out_data, resids, station_type='e
 
                 return vpd, rn, u2, mean_temp, eto
 
-            asce_params = sdf.parallel_apply(calc_asce_params, zw=_zw, axis=1)
+            asce_params = sdf.apply(calc_asce_params, zw=_zw, axis=1)
             sdf[['vpd', 'rn', 'u2', 'tmean', 'eto']] = pd.DataFrame(asce_params.tolist(), index=sdf.index)
 
             nldas = get_nldas(row[kw['lon']], row[kw['lat']], row[kw['elev']], start=s, end=e)
-            asce_params = nldas.parallel_apply(calc_asce_params, zw=_zw, axis=1)
+            asce_params = nldas.apply(calc_asce_params, zw=_zw, axis=1)
             nldas[['vpd', 'rn', 'u2', 'tmean', 'eto']] = pd.DataFrame(asce_params.tolist(), index=nldas.index)
 
             res_df = sdf[['eto']].copy()
@@ -117,6 +117,7 @@ def residuals(stations, station_data, results, out_data, resids, station_type='e
                 residuals = df[s_var] - df[n_var]
                 res_df[var] = residuals
                 sta_res[var] = list(residuals)
+                all_res_dict[var] += list(residuals)
                 mean_ = np.mean(residuals).item()
                 variance = np.var(residuals).item()
                 data_skewness = skew(residuals).item()
@@ -158,7 +159,6 @@ def residuals(stations, station_data, results, out_data, resids, station_type='e
     with open(results, 'w') as dst:
         json.dump(errors, dst, indent=4)
 
-    all_res_dict = {k: [item for sublist in v for item in sublist] for k, v in all_res_dict.items()}
     with open(resids, 'w') as dst:
         json.dump(all_res_dict, dst, indent=4)
 
@@ -207,24 +207,24 @@ if __name__ == '__main__':
 
     d = '/media/research/IrrigationGIS/milk'
     if not os.path.isdir(d):
-        d = '/home/dgketchum/data/IrrigationGIS/milk'
+        home = os.path.expanduser('~')
+        d = os.path.join(home, 'data', 'IrrigationGIS', 'milk')
 
     # sta = os.path.join(d, '/eddy_covariance_data_processing/eddy_covariance_stations.csv'
     sta = os.path.join(d, 'bias_ratio_data_processing/ETo/'
                           'final_milk_river_metadata_nldas_eto_bias_ratios_long_term_mean.csv')
-    sta_data = os.path.join(d, 'weather_station_data_processing/corrected_data')
-    comp_data = os.path.join(d, 'weather_station_data_processing/comparison_data')
+    sta_data = os.path.join(d, 'weather_station_data_processing', 'corrected_data')
+    comp_data = os.path.join(d, 'weather_station_data_processing', 'comparison_data')
 
     # error_json = os.path.join(d, 'eddy_covariance_nldas_analysis', 'error_distributions.json')
     error_json = os.path.join(d, 'weather_station_data_processing', 'error_analysis', 'error_distributions.json')
     res_json = os.path.join(d, 'weather_station_data_processing', 'error_analysis', 'residuals.json')
     hist = os.path.join(d, 'weather_station_data_processing', 'error_analysis', 'residual_histograms')
 
-    pandarallel.initialize(nb_workers=4)
+    # pandarallel.initialize(nb_workers=4)
 
     ee_check = os.path.join(d, 'weather_station_data_processing/NLDAS_data_at_stations')
-    residuals(sta, sta_data, error_json, comp_data, res_json,
-              station_type='agri', check_dir=None, plot_dir=None)
+    residuals(sta, sta_data, error_json, comp_data, res_json, station_type='agri', check_dir=None, plot_dir=None)
 
     results_json = os.path.join(d, 'weather_station_data_processing', 'error_analysis',
                                 'error_propagation_etovar_1000.json')
