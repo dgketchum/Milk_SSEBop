@@ -163,6 +163,7 @@ def plot_residual_scatter_histograms(error_json, plot_dir):
                    verticalalignment='top', bbox=props)
 
     plot_path = os.path.join(plot_dir, 'eto_residuals_histogram.png')
+    plt.tight_layout()
     plt.savefig(plot_path)
 
 
@@ -173,11 +174,11 @@ if __name__ == '__main__':
         home = os.path.expanduser('~')
         d = os.path.join(home, 'data', 'IrrigationGIS', 'milk')
 
-    met_residuals = os.path.join(d, 'weather_station_data_processing', 'error_analysis', 'residuals.json')
-
+    # met_residuals = os.path.join(d, 'weather_station_data_processing', 'error_analysis', 'residuals.json')
+    #
     hist = os.path.join(d, 'weather_station_data_processing', 'error_analysis', 'residual_histograms')
-
-    plot_residual_met_histograms(met_residuals, hist)
+    #
+    # plot_residual_met_histograms(met_residuals, hist)
 
     error_json = os.path.join(d, 'weather_station_data_processing', 'error_analysis', 'error_distributions.json')
 
