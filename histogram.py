@@ -6,8 +6,9 @@ import numpy as np
 import pandas as pd
 import seaborn as sns
 from scipy.stats import skew, kurtosis
+from scipy.stats import linregress
 
-from nldas_eto_error import LIMITS, STR_MAP
+from nldas_eto_error import LIMITS, STR_MAP, STR_MAP_SIMPLE
 
 large = 22
 med = 16
@@ -29,7 +30,7 @@ params = {'axes.titlesize': large,
           'ytick.right': False,
           }
 plt.rcParams.update(params)
-sns.set_style("white", {'axes.linewidth': 0.5})
+sns.set_style('white', {'axes.linewidth': 0.5})
 
 
 def plot_residual_met_histograms(resids_file, plot_dir):
@@ -43,12 +44,14 @@ def plot_residual_met_histograms(resids_file, plot_dir):
         data_skewness = skew(residuals).item()
         data_kurtosis = kurtosis(residuals).item()
 
-        # Create a histogram plot
         plt.figure(figsize=(10, 6))
-        sns.histplot(residuals, kde=True, color='blue')
-        plt.axvline(mean_, color='red', linestyle='dashed', linewidth=1)
-        plt.title(f'{STR_MAP[var]} Residuals Histogram')
-        plt.xlabel(f'{STR_MAP[var]} Residuals\nObserved minus NLDAS')
+
+        ax = sns.histplot(residuals, kde=True, color='grey')
+        kde_line = ax.lines[0]
+        kde_line.set_color('red')
+
+        plt.axvline(mean_, color='black', linestyle='dashed', linewidth=1)
+        plt.xlabel(f'{STR_MAP[var]} Residuals\n(Observed minus NLDAS)')
         plt.ylabel('Frequency')
         plt.grid(True)
 
@@ -64,107 +67,88 @@ def plot_residual_met_histograms(resids_file, plot_dir):
         props = dict(boxstyle='round', facecolor='white')
         plt.gca().text(0.05, 0.95, textstr, transform=plt.gca().transAxes, fontsize=14,
                        verticalalignment='top', bbox=props)
-
+        plt.tight_layout()
         plot_path = os.path.join(plot_dir, f'{var}_residuals_histogram.png')
         plt.savefig(plot_path)
-        # plt.show()
 
 
-def plot_residual_scatter_histograms(error_json, plot_dir):
-
-    with open(error_json, 'r') as f:
-        meta = json.load(f)
-
-    eto_residuals = []
-    first, df = True, None
-    for sid, data in meta.items():
-
-        if data == 'exception':
-            continue
-
-        _file = data['resid']
-        c = pd.read_csv(_file, parse_dates=True, index_col='date')
-
-        eto = c['eto'].copy()
-        eto.dropna(how='any', inplace=True)
-        eto_residuals += list(eto.values)
-
-        c.dropna(how='any', axis=0, inplace=True)
-        if first:
-            df = c.copy()
-            first = False
-        else:
-            df = pd.concat([df, c], ignore_index=True, axis=0)
-
-    print(df.shape[0])
+def plot_eto_var_scatter_histograms(joined_resid_csv, plot_dir):
+    df = pd.read_csv(joined_resid_csv, index_col=0)
 
     vars = [c for c in df.columns if c != 'eto']
+    first = True
 
-    for v in vars:
-        fig = plt.figure(figsize=(16, 10), dpi=600)
-        grid = plt.GridSpec(4, 4, hspace=0.5, wspace=0.2)
+    fig, axes = plt.subplots(2, 2, figsize=(10, 12), dpi=600)
+    axes = axes.flatten()
 
-        ax_main = fig.add_subplot(grid[:-1, :-1])
-        ax_right = fig.add_subplot(grid[:-1, -1], xticklabels=[], yticklabels=[])
-        ax_bottom = fig.add_subplot(grid[-1, 0:-1], xticklabels=[], yticklabels=[])
+    for i, v in enumerate(vars):
 
-        sns.jointplot(x=df['eto'], y=df[v], kind='scatter', marginal_kws={'kde': True},
-                      s=1, color='black')
-        ax_main.scatter(df[v].values, df['eto'].values, s=2, alpha=.9,
-                        cmap="tab10", edgecolors='gray', linewidths=.5)
+        print(v)
+        ax_main = axes[i]
 
-        ax_main.scatter([df[v].values.mean()], [df['eto'].values.mean()], s=10, alpha=.9, color='red')
+        ax_main.scatter(df['eto'].values, df[v].values, s=2, alpha=.9,
+                        c=sns.color_palette('rocket')[0], edgecolors='gray', linewidths=.5)
 
-        sns.kdeplot(data=df, ax=ax_right, y='eto')
-        ax_right.set_xlabel(None)
-        ax_right.set_ylabel(None)
-        ax_bottom.invert_yaxis()
+        ax_main.scatter(df['eto'].values.mean(), df[v].values.mean(), s=10, alpha=.9, color='red')
 
-        sns.kdeplot(data=df, ax=ax_bottom, x=v)
-        ax_bottom.set_xlabel(None)
-        ax_bottom.set_ylabel(None)
+        ax_main.set_ylabel(STR_MAP[v])
 
-        plt.axvline(0, color='gray', alpha=0.3)
-        plt.axhline(0, color='gray', alpha=0.3)
+        ax_main.axvline(0, color='gray', alpha=0.7)
+        ax_main.axhline(0, color='gray', alpha=0.7)
 
-        # plt.title('Scatter Plot of {} vs. {}'.format('eto', v))
+        slope, intercept, r_value, p_value, std_err = linregress(df['eto'], df[v])
+        r_squared = r_value ** 2
 
-        plot_path = os.path.join(plot_dir, 'eto_{}_scatter_plot.png'.format(v))
-        plt.savefig(plot_path)
-        print(plot_path)
-        plt.close()
+        if first:
+            textstr = '\n'.join((
+                r'$n={:,}$'.format(df.shape[0]),
+                r'$r^2$: {:.2f}'.format(r_squared)))
+            props = dict(boxstyle='round', facecolor='white')
+            ax_main.text(0.05, 0.95, textstr, transform=ax_main.transAxes, fontsize=14,
+                         verticalalignment='top', bbox=props)
 
-    corr_matrix = df.corr()
-    plt.figure(figsize=(16, 12))
-    sns.heatmap(corr_matrix, annot=True, fmt=".2f", cmap="coolwarm", square=True)
-    plt.title('Correlation Matrix Heatmap')
-    plot_path = os.path.join(plot_dir, 'correlation_matrix_heatmap.png')
+            first = False
+
+        else:
+            textstr = r'$r^2$: {:.2f}'.format(r_squared)
+            props = dict(boxstyle='round', facecolor='white')
+            ax_main.text(0.05, 0.95, textstr, transform=ax_main.transAxes, fontsize=14,
+                         verticalalignment='top', bbox=props)
+
+        ax_main.set_xlim(-6, 6)
+
+    textstr = 'ETo'
+    props = dict(facecolor='white')
+    fig.text(0.5, 0.05, textstr, ha="center", va="top", fontsize=14, bbox=props)
+
+    # plt.tight_layout()
+    plot_path = os.path.join(plot_dir, 'eto_vars_scatter_plot.png'.format(v))
     plt.savefig(plot_path)
-    print(plot_path)
     plt.close()
 
-    mean_ = np.array(eto_residuals).mean()
-    variance = np.array(eto_residuals).var()
 
-    plt.figure(figsize=(10, 6))
-    sns.histplot(eto_residuals, kde=True, color='blue')
-    plt.axvline(mean_, color='red', linestyle='dashed', linewidth=1)
-    plt.title(f'{STR_MAP["eto"]} Residuals Histogram')
-    plt.xlabel(f'{STR_MAP["eto"]} Residuals\nObserved minus NLDAS')
-    plt.ylabel('Frequency')
-    plt.grid(True)
+def plot_resid_corr_heatmap(joined_resid_csv, plot_dir):
+    df = pd.read_csv(joined_resid_csv, index_col=0)
+    df = df.rename(columns=STR_MAP_SIMPLE)
+    corr_matrix = df.corr()
 
-    textstr = '\n'.join((
-        r'$n={:,}$'.format(len(eto_residuals)),
-        r'$\mu={:.2f}$'.format(mean_),
-        r'$\sigma^2={:.2f}$'.format(variance)))
-    props = dict(boxstyle='round', facecolor='white')
-    plt.gca().text(0.05, 0.95, textstr, transform=plt.gca().transAxes, fontsize=14,
-                   verticalalignment='top', bbox=props)
+    mask = np.zeros_like(corr_matrix)
+    mask[np.triu_indices_from(mask)] = True
 
-    plot_path = os.path.join(plot_dir, 'eto_residuals_histogram.png')
+    plt.figure(figsize=(16, 12))
+    sns.heatmap(corr_matrix,
+                annot=True,
+                fmt='.2f',
+                cmap='rocket',
+                square=True,
+                mask=mask,
+                cbar=False,
+                annot_kws={'size': 16})
+
+    plot_path = os.path.join(plot_dir, 'correlation_matrix_heatmap.png')
     plt.tight_layout()
     plt.savefig(plot_path)
+    plt.close()
 
 
 if __name__ == '__main__':
@@ -174,14 +158,20 @@ if __name__ == '__main__':
         home = os.path.expanduser('~')
         d = os.path.join(home, 'data', 'IrrigationGIS', 'milk')
 
-    # met_residuals = os.path.join(d, 'weather_station_data_processing', 'error_analysis', 'residuals.json')
-    #
-    hist = os.path.join(d, 'weather_station_data_processing', 'error_analysis', 'residual_histograms')
-    #
-    # plot_residual_met_histograms(met_residuals, hist)
+    met_residuals = os.path.join(d, 'weather_station_data_processing', 'error_analysis', 'residuals.json')
 
-    error_json = os.path.join(d, 'weather_station_data_processing', 'error_analysis', 'error_distributions.json')
+    joined_resid = os.path.join(d, 'weather_station_data_processing', 'error_analysis', 'joined_residuals.csv')
 
-    plot_residual_scatter_histograms(error_json, hist)
+    hist = os.path.join(d, 'weather_station_data_processing', 'error_analysis', 'residual_histograms',
+                        'joined_resid_hist')
+    plot_residual_met_histograms(met_residuals, hist)
+
+    scatter = os.path.join(d, 'weather_station_data_processing', 'error_analysis', 'residual_histograms',
+                           'joined_resid_scatter')
+    # plot_eto_var_scatter_histograms(joined_resid, scatter)
+
+    heat = os.path.join(d, 'weather_station_data_processing', 'error_analysis', 'residual_histograms',
+                        'heatmap')
+    # plot_resid_corr_heatmap(joined_resid, heat)
 
 # ========================= EOF ====================================================================
