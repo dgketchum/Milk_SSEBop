@@ -117,11 +117,11 @@ def plot_eto_var_scatter_histograms(joined_resid_csv, plot_dir):
 
         ax_main.set_xlim(-6, 6)
 
-    textstr = 'ETo'
+    textstr = 'ETo [mm day$^{-1}$]'
     props = dict(facecolor='white')
-    fig.text(0.5, 0.05, textstr, ha="center", va="top", fontsize=14, bbox=props)
+    fig.text(0.5, 0.05, textstr, ha='center', va='top', fontsize=16, bbox=props)
 
-    # plt.tight_layout()
+    plt.tight_layout(rect=[0, 0.05, 1, 1])
     plot_path = os.path.join(plot_dir, 'eto_vars_scatter_plot.png'.format(v))
     plt.savefig(plot_path)
     plt.close()
@@ -151,6 +151,36 @@ def plot_resid_corr_heatmap(joined_resid_csv, plot_dir):
     plt.close()
 
 
+def station_barplot(csv, out_file):
+    plt.figure(figsize=(10, 4))
+
+    df = pd.read_csv(csv, index_col=0)
+    df = df.rename(columns=STR_MAP_SIMPLE)
+    df = df[['VPD', 'Wind Speed', 'Mean Temp', 'Rn', 'sum']]
+    colors = sns.color_palette('rocket', n_colors=len(df.columns) - 1)
+    fig, ax = plt.subplots()
+
+    bottom = np.zeros(df.shape[0])
+    for v, c in zip(df.columns[:4], colors):
+        p = ax.bar(df.index, df[v], 0.9, label=v, bottom=bottom, color=c)
+        bottom += df[v]
+
+    plt.xlabel('Station', fontsize=24)
+    plt.ylabel('Variance Accounted For', fontsize=24)
+    # plt.title('Stacked Bar Plot of Measurement Fractions by Station')
+    ax.set_xticks([])
+
+    for spine in ['top', 'right', 'bottom']:
+        ax.spines[spine].set_visible(False)
+
+    handles, labels = ax.get_legend_handles_labels()
+    legend = ax.legend(handles, labels,
+                       loc='lower left', bbox_to_anchor=(0.1, 0),
+                       facecolor='white', fontsize=18)
+    plt.tight_layout()
+    plt.savefig(out_file)
+
+
 if __name__ == '__main__':
 
     d = '/media/research/IrrigationGIS/milk'
@@ -162,16 +192,17 @@ if __name__ == '__main__':
 
     joined_resid = os.path.join(d, 'weather_station_data_processing', 'error_analysis', 'joined_residuals.csv')
 
-    hist = os.path.join(d, 'weather_station_data_processing', 'error_analysis', 'residual_histograms',
-                        'joined_resid_hist')
-    plot_residual_met_histograms(met_residuals, hist)
+    hist = os.path.join(d, 'weather_station_data_processing', 'error_analysis', 'joined_resid_hist')
+    # plot_residual_met_histograms(met_residuals, hist)
 
-    scatter = os.path.join(d, 'weather_station_data_processing', 'error_analysis', 'residual_histograms',
-                           'joined_resid_scatter')
+    scatter = os.path.join(d, 'weather_station_data_processing', 'error_analysis', 'joined_resid_scatter')
     # plot_eto_var_scatter_histograms(joined_resid, scatter)
 
-    heat = os.path.join(d, 'weather_station_data_processing', 'error_analysis', 'residual_histograms',
-                        'heatmap')
+    heat = os.path.join(d, 'weather_station_data_processing', 'error_analysis', 'heatmap')
     # plot_resid_corr_heatmap(joined_resid, heat)
 
+    decomp = os.path.join(d, 'weather_station_data_processing', 'error_analysis', 'var_decomp_stations_tprop.csv')
+    decomp_plt = os.path.join(d, 'weather_station_data_processing', 'error_analysis',
+                              'decomp_barplot', 'var_decomp_stations_tprop.png')
+    station_barplot(decomp, decomp_plt)
 # ========================= EOF ====================================================================
