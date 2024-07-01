@@ -13,7 +13,6 @@ from pandarallel import pandarallel
 from refet import Daily, calcs
 from scipy.stats import skew, kurtosis, norm
 
-
 warnings.simplefilter(action='ignore', category=FutureWarning)
 
 VAR_MAP = {'rsds': 'Rs (w/m2)',
@@ -35,11 +34,21 @@ RENAME_MAP = {v: k for k, v in VAR_MAP.items()}
 
 COMPARISON_VARS = ['vpd', 'rn', 'tmean', 'u2', 'eto']
 
-STR_MAP = {'rn': 'Net Radiation [MJ m-2 d-1]',
-           'vpd': 'Vapor Pressure Deficit [kPa]',
-           'tmean': 'Mean Daily Temperature [K]',
-           'u2': 'Wind Speed at 2 m [m sec-1]',
-           'eto': 'ASCE Grass Reference Evapotranspiration [mm]'}
+STR_MAP = {
+    'rn': r'Net Radiation [MJ m$^{-2}$ d$^{-1}$]',
+    'vpd': r'Vapor Pressure Deficit [kPa]',
+    'tmean': r'Mean Daily Temperature [K]',
+    'u2': r'Wind Speed at 2 m [m s$^{-1}$]',
+    'eto': r'ASCE Grass Reference Evapotranspiration [mm]'
+}
+
+STR_MAP_SIMPLE = {
+    'rn': r'Rn',
+    'vpd': r'VPD',
+    'tmean': r'Mean Temp',
+    'u2': r'Wind Speed',
+    'eto': r'ETo'
+}
 
 LIMITS = {'vpd': 3,
           'rn': 0.8,
@@ -203,6 +212,34 @@ def get_nldas(lon, lat, elev, start, end):
     return nldas
 
 
+def concatenate_station_residuals(error_json, out_file):
+    with open(error_json, 'r') as f:
+        meta = json.load(f)
+
+    eto_residuals = []
+    first, df = True, None
+    for sid, data in meta.items():
+
+        if data == 'exception':
+            continue
+
+        _file = data['resid']
+        c = pd.read_csv(_file, parse_dates=True, index_col='date')
+
+        eto = c['eto'].copy()
+        eto.dropna(how='any', inplace=True)
+        eto_residuals += list(eto.values)
+
+        c.dropna(how='any', axis=0, inplace=True)
+        if first:
+            df = c.copy()
+            first = False
+        else:
+            df = pd.concat([df, c], ignore_index=True, axis=0)
+
+    df.to_csv(out_file)
+
+
 if __name__ == '__main__':
 
     d = '/media/research/IrrigationGIS/milk'
@@ -229,4 +266,7 @@ if __name__ == '__main__':
     results_json = os.path.join(d, 'weather_station_data_processing', 'error_analysis',
                                 'error_propagation_etovar_1000.json')
     # error_propagation(error_json, sta, results_json, station_type='agri', num_samples=1000)
+
+    joined_resid = os.path.join(d, 'weather_station_data_processing', 'error_analysis', 'joined_residuals.csv')
+    # concatenate_station_residuals(error_json, joined_resid)
 # ========================= EOF ====================================================================
