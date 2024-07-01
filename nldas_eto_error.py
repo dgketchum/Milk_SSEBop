@@ -39,7 +39,7 @@ STR_MAP = {
     'vpd': r'Vapor Pressure Deficit [kPa]',
     'tmean': r'Mean Daily Temperature [K]',
     'u2': r'Wind Speed at 2 m [m s$^{-1}$]',
-    'eto': r'ASCE Grass Reference Evapotranspiration [mm]'
+    'eto': r'ASCE Grass Reference Evapotranspiration [mm day$^{-1}$]'
 }
 
 STR_MAP_SIMPLE = {
