@@ -59,7 +59,7 @@ LIMITS = {'vpd': 3,
 PACIFIC = pytz.timezone('US/Pacific')
 
 
-def residuals(stations, station_data, results, out_data, resids, station_type='ec', check_dir=None, plot_dir=None):
+def residuals(stations, station_data, results, out_data, resids, station_type='ec', check_dir=None):
     kw = station_par_map(station_type)
     station_list = pd.read_csv(stations, index_col=kw['index'])
 
@@ -133,22 +133,6 @@ def residuals(stations, station_data, results, out_data, resids, station_type='e
                 data_kurtosis = kurtosis(residuals).item()
                 var_dt = [i.strftime('%Y-%m-%d') for i in residuals.index]
                 dct[var] = (mean_, variance, data_skewness, data_kurtosis, var_dt)
-
-                if plot_dir:
-                    plt.figure(figsize=(10, 6))
-                    sns.histplot(residuals, kde=True, color='blue')
-                    plt.axvline(mean_, color='red', linestyle='dashed', linewidth=1)
-                    plt.title(f'{var} residuals at {fid}')
-                    plt.xlabel(f'{STR_MAP[var]} Residuals')
-                    plt.ylabel('Frequency')
-                    plt.grid(True)
-                    limit = LIMITS.get(var, 10)
-                    plt.xlim(-limit, limit)
-
-                    plot_path = os.path.join(plot_dir, var, f'{var}_{fid}_residuals_histogram.png')
-                    plt.savefig(plot_path)
-                    plt.close()
-                    continue
 
             dct['file'] = os.path.join(out_data, '{}.csv'.format(fid))
             nldas = nldas.loc[sdf.index]
@@ -261,7 +245,7 @@ if __name__ == '__main__':
     # pandarallel.initialize(nb_workers=4)
 
     ee_check = os.path.join(d, 'weather_station_data_processing/NLDAS_data_at_stations')
-    residuals(sta, sta_data, error_json, comp_data, res_json, station_type='agri', check_dir=None, plot_dir=None)
+    residuals(sta, sta_data, error_json, comp_data, res_json, station_type='agri', check_dir=None)
 
     results_json = os.path.join(d, 'weather_station_data_processing', 'error_analysis',
                                 'error_propagation_etovar_1000.json')
