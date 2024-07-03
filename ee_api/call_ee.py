@@ -23,6 +23,7 @@ def export_geo():
     ])
     return geo
 
+
 def get_test_fc():
     ag = ee.Geometry.Polygon([
         [-112.6565977459894, 48.68663591289309],
@@ -143,11 +144,63 @@ def export_gridded_data(tables, bucket, years, description, debug=False, clip_fc
             print(out_desc)
 
 
+def export_mean_annual_raster(bucket, years, description, mask=None, clip_fc=None, resolution=30):
+    ee.Initialize()
+
+    if clip_fc:
+        clip = ee.FeatureCollection(clip_fc)
+    else:
+        clip = None
+
+    if clip:
+        lc_band = get_landcover(2018).clip(clip)
+    else:
+        lc_band = get_landcover(2018)
+
+    s = '{}-01-01'.format(years[0])
+    e = '{}-12-31'.format(years[-1])
+
+    if clip:
+        et = ee.ImageCollection(ET_COLLECTION).filterDate(s, e).select('et').sum().divide(len(years)).clip(clip).float()
+    else:
+        et = ee.ImageCollection(ET_COLLECTION).filterDate(s, e).select('et').sum().divide(len(years)).float()
+
+    lc_band = lc_band.reproject(crs='EPSG:5070', scale=30).resample('bilinear')
+    et = et.reproject(crs='EPSG:5070', scale=30).resample('bilinear')
+
+    if mask:
+        lc_mask = lc_band.eq(mask)
+        et = et.mask(lc_mask)
+
+    if mask:
+        desc = '{}_{}_{}_lc_{}'.format(description, years[0], years[-1], mask)
+    else:
+        desc = '{}_{}_{}'.format(description, years[0], years[-1])
+
+    task = ee.batch.Export.image.toCloudStorage(
+        image=et,
+        bucket=bucket,
+        description=desc,
+        region=clip.geometry(),
+        scale=resolution,
+        maxPixels=1e13,
+    )
+
+    task.start()
+    print(desc)
+
+
 if __name__ == '__main__':
     ee.Authenticate()
     ee.Initialize(project='ssebop-montana')
 
-    export_gridded_data(SMM_DISSOLVE, 'wudr', years=[i for i in range(1985, 2024)],
-                        description='smm_lc_et', debug=False, join_col='FID', **{'target_classes': [1, 2, 3]})
+    # export_gridded_data(SMM_DISSOLVE, 'wudr', years=[i for i in range(1985, 2024)],
+    #                     description='smm_lc_et', debug=False, join_col='FID', **{'target_classes': [1, 2, 3]})
+
+    masks = [None, 1, 2, 3]
+
+    for mask_ in masks:
+        export_mean_annual_raster('wudr', years=[i for i in range(1985, 2024)], clip_fc=SMM_DISSOLVE,
+                                  description='smm_mean_annual_et', mask=mask_, resolution=30)
 
 # ========================= EOF ================================================================================
