@@ -8,6 +8,7 @@ from bokeh.layouts import column
 from bokeh.models import DatetimeTickFormatter, Span
 from bokeh.palettes import Category10
 from bokeh.plotting import figure, output_file, save
+import matplotlib.dates as mdates
 
 
 def compile_data(csv_dir, plot_dir):
@@ -33,15 +34,28 @@ def compile_data(csv_dir, plot_dir):
     plots = []
     colors = Category10[10]
 
-    p = figure(title='ET', x_axis_label='Time', y_axis_label='Value', width=2400, height=800,
-               x_axis_type="datetime")
+    fig, ax = plt.subplots(figsize=(14, 6))
+
+    ax.xaxis.set_major_formatter(mdates.DateFormatter('%Y-%m'))
+    ax.xaxis.set_major_locator(mdates.YearLocator(base=6))
+    plt.setp(ax.get_xticklabels(), rotation=45, ha="right")
 
     for lc, key in zip(['Agriculture', 'Grass/Shrubland', 'Forest'], [1, 2, 3]):
+        ax.plot(df.index, df['et_{}'.format(key)].values, color=colors[key], label=lc)
 
+    ax.legend(loc='upper left')
+
+    _fig_file = os.path.join(plot_dir, 'timeseries_crop_et.png')
+    plt.savefig(_fig_file)
+
+    p = figure(title='ET', x_axis_label='Time', y_axis_label='Value', width=2400, height=800,
+               x_axis_type='datetime')
+
+    for lc, key in zip(['Agriculture', 'Grass/Shrubland', 'Forest'], [1, 2, 3]):
         p.line(df.index, df['et_{}'.format(key)].values, line_width=1.0, color=colors[key], legend_label=lc)
 
-    p.legend.location = "top_left"
-    p.xaxis.formatter = DatetimeTickFormatter(days=["%Y-%m-%d"], months=["%Y-%m-%d"], years=["%Y-%m-%d"])
+    p.legend.location = 'top_left'
+    p.xaxis.formatter = DatetimeTickFormatter(days=['%Y-%m-%d'], months=['%Y-%m-%d'], years=['%Y-%m-%d'])
     plots.append(p)
 
     _fig_file = os.path.join(plot_dir, 'timeseries_crop_et.html')
