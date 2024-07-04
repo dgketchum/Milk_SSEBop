@@ -11,6 +11,9 @@ sys.setrecursionlimit(5000)
 
 ET_COLLECTION = 'projects/dri-milkriver/assets/ssebop/nldas/monthly/v0_0'
 SMM_DISSOLVE = 'projects/ee-dgketchum/assets/milk/smm_dissolve'
+SMM_MULTI = 'projects/ee-dgketchum/assets/milk/smm_multi_aea'
+
+CLASS_MAP = {0: 'all', 1: 'agriculture', 2: 'grass', 3: 'forest'}
 
 
 def export_geo():
@@ -71,7 +74,7 @@ def export_gridded_data(tables, bucket, years, description, debug=False, clip_fc
         clip = None
 
     if not kwargs:
-        target_classes = [1]
+        target_classes = None
     else:
         target_classes = kwargs['target_classes']
 
@@ -104,13 +107,22 @@ def export_gridded_data(tables, bucket, years, description, debug=False, clip_fc
 
             for target_class in target_classes:
 
-                lc_mask = lc_band.eq(target_class)
-                lc_name = 'lc_{}'.format(target_class)
-                lc_area = lc_band.mask(lc_mask).multiply(area).rename(lc_name).divide(1e6)
+                if target_class > 0:
 
-                et_band = et.mask(lc_mask)
-                et_name = 'et_{}'.format(target_class)
-                et_area = et_band.multiply(area).rename(et_name).divide(1e9)
+                    lc_mask = lc_band.eq(target_class)
+                    lc_name = 'lc_{}'.format(target_class)
+                    lc_area = lc_mask.multiply(area).rename(lc_name).divide(1e6)
+
+                    et_band = et.mask(lc_mask)
+                    et_name = 'et_{}'.format(target_class)
+                    et_area = et_band.multiply(area).rename(et_name).divide(1e9)
+
+                else:
+                    lc_mask = lc_band.gt(-1)
+                    lc_name = 'lc_all'
+                    lc_area = lc_mask.multiply(area).rename(lc_name).divide(1e6)
+                    et_name = 'et_all'
+                    et_area = et.mask(lc_mask).multiply(area).rename(et_name).divide(1e9)
 
                 if first:
                     bands = et_area.addBands([lc_area])
@@ -142,7 +154,6 @@ def export_gridded_data(tables, bucket, years, description, debug=False, clip_fc
 
             task.start()
             print(out_desc)
-
 
 def export_mean_annual_raster(bucket, years, description, mask=None, clip_fc=None, resolution=30):
     ee.Initialize()
@@ -194,13 +205,12 @@ if __name__ == '__main__':
     ee.Authenticate()
     ee.Initialize(project='ssebop-montana')
 
-    # export_gridded_data(SMM_DISSOLVE, 'wudr', years=[i for i in range(1985, 2024)],
-    #                     description='smm_lc_et', debug=False, join_col='FID', **{'target_classes': [1, 2, 3]})
+    export_gridded_data(SMM_MULTI, 'wudr', years=[i for i in range(1985, 2024)],
+                        description='smm_lc_et', debug=False, join_col='FID', **{'target_classes': [0, 1, 2, 3]})
 
-    masks = [None, 1, 2, 3]
-
-    for mask_ in masks:
-        export_mean_annual_raster('wudr', years=[i for i in range(1985, 2024)], clip_fc=SMM_DISSOLVE,
-                                  description='smm_mean_annual_et', mask=mask_, resolution=30)
+    # masks = [None, 1, 2, 3]
+    # for mask_ in masks:
+    #     export_mean_annual_raster('wudr', years=[i for i in range(1985, 2024)], clip_fc=SMM_DISSOLVE,
+    #                               description='smm_mean_annual_et', mask=mask_, resolution=30)
 
 # ========================= EOF ================================================================================
