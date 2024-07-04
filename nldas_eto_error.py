@@ -6,12 +6,12 @@ from datetime import timedelta
 
 import numpy as np
 import pandas as pd
-import seaborn as sns
 import pynldas2 as nld
-import matplotlib.pyplot as plt
-from pandarallel import pandarallel
+from utils.thredds import GridMet
+from utils.thredds import air_pressure, actual_vapor_pressure
+
 from refet import Daily, calcs
-from scipy.stats import skew, kurtosis, norm
+from scipy.stats import skew, kurtosis
 
 warnings.simplefilter(action='ignore', category=FutureWarning)
 
@@ -59,95 +59,109 @@ LIMITS = {'vpd': 3,
 PACIFIC = pytz.timezone('US/Pacific')
 
 
-def residuals(stations, station_data, results, out_data, resids, station_type='ec', check_dir=None):
+def residuals(stations, station_data, results, out_data, resids, station_type='ec', model='nldas2', check_dir=None):
+
     kw = station_par_map(station_type)
     station_list = pd.read_csv(stations, index_col=kw['index'])
+
+    if model == 'gridmet':
+        station_list = station_list[station_list['latitude'] <= 49.0]
 
     errors, all_res_dict = {}, {v: [] for v in COMPARISON_VARS}
     for i, (fid, row) in enumerate(station_list.iterrows()):
 
         sta_res = {v: [] for v in COMPARISON_VARS}
         print('{} of {}: {}'.format(i + 1, station_list.shape[0], fid))
-        try:
-            sdf_file = os.path.join(station_data, '{}_output.xlsx'.format(fid))
-            sdf = pd.read_excel(sdf_file, parse_dates=True, index_col='date')
 
-            s = pd.to_datetime(sdf.index[0]) - timedelta(days=2)
-            e = pd.to_datetime(sdf.index[-1]) + timedelta(days=2)
+        # try:
+        sdf_file = os.path.join(station_data, '{}_output.xlsx'.format(fid))
+        sdf = pd.read_excel(sdf_file, parse_dates=True, index_col='date')
 
-            sdf.index = sdf.index.tz_localize(PACIFIC)
-            sdf = sdf.rename(RENAME_MAP, axis=1)
-            sdf['doy'] = [i.dayofyear for i in sdf.index]
+        s = pd.to_datetime(sdf.index[0]) - timedelta(days=2)
+        e = pd.to_datetime(sdf.index[-1]) + timedelta(days=2)
 
-            _zw = 10.0 if station_type == 'ec' else row['anemom_height_m']
+        sdf.index = sdf.index.tz_localize(PACIFIC)
+        sdf = sdf.rename(RENAME_MAP, axis=1)
+        sdf['doy'] = [i.dayofyear for i in sdf.index]
 
-            def calc_asce_params(r, zw):
-                asce = Daily(tmin=r['min_temp'],
-                             tmax=r['max_temp'],
-                             ea=r['ea'],
-                             rs=r['rsds'] * 0.0036,
-                             uz=r['wind'],
-                             zw=zw,
-                             doy=r['doy'],
-                             elev=row[kw['elev']],
-                             lat=row[kw['lat']])
+        _zw = 10.0 if station_type == 'ec' else row['anemom_height_m']
 
-                vpd = asce.vpd[0]
-                rn = asce.rn[0]
-                u2 = asce.u2[0]
-                mean_temp = asce.tmean[0]
-                eto = asce.eto()[0]
+        def calc_asce_params(r, zw):
+            asce = Daily(tmin=r['min_temp'],
+                         tmax=r['max_temp'],
+                         ea=r['ea'],
+                         rs=r['rsds'] * 0.0036,
+                         uz=r['wind'],
+                         zw=zw,
+                         doy=r['doy'],
+                         elev=row[kw['elev']],
+                         lat=row[kw['lat']])
 
-                return vpd, rn, u2, mean_temp, eto
+            vpd = asce.vpd[0]
+            rn = asce.rn[0]
+            u2 = asce.u2[0]
+            mean_temp = asce.tmean[0]
+            eto = asce.eto()[0]
 
-            asce_params = sdf.apply(calc_asce_params, zw=_zw, axis=1)
-            sdf[['vpd', 'rn', 'u2', 'tmean', 'eto']] = pd.DataFrame(asce_params.tolist(), index=sdf.index)
+            return vpd, rn, u2, mean_temp, eto
 
-            nldas = get_nldas(row[kw['lon']], row[kw['lat']], row[kw['elev']], start=s, end=e)
-            asce_params = nldas.apply(calc_asce_params, zw=_zw, axis=1)
-            nldas[['vpd', 'rn', 'u2', 'tmean', 'eto']] = pd.DataFrame(asce_params.tolist(), index=nldas.index)
+        asce_params = sdf.apply(calc_asce_params, zw=_zw, axis=1)
+        sdf[['vpd', 'rn', 'u2', 'tmean', 'eto']] = pd.DataFrame(asce_params.tolist(), index=sdf.index)
 
-            res_df = sdf[['eto']].copy()
+        if model == 'nldas2':
+            grid = get_nldas(row[kw['lon']], row[kw['lat']], row[kw['elev']], start=s, end=e)
 
-            if check_dir:
-                check_file = os.path.join(check_dir, '{}_nldas_daily.csv'.format(fid))
-                cdf = pd.read_csv(check_file, parse_dates=True, index_col='date')
-                cdf.index = cdf.index.tz_localize(PACIFIC)
-                indx = [i for i in cdf.index if i in nldas.index]
-                rsq = np.corrcoef(nldas.loc[indx, 'eto'], cdf.loc[indx, 'eto_asce'])[0, 0]
-                print('{} PyNLDAS/Earth Engine r2: {:.3f}'.format(row['station_name'], rsq))
+        elif model == 'gridmet':
+            grid = get_gridmet(row[kw['lon']], row[kw['lat']], start=s, end=e)
 
-            dct = {}
-            for var in COMPARISON_VARS:
-                s_var, n_var = '{}_station'.format(var), '{}_nldas'.format(var)
-                df = pd.DataFrame(columns=[s_var], index=sdf.index, data=sdf[var].values)
-                df.dropna(how='any', axis=0, inplace=True)
-                df[n_var] = nldas.loc[df.index, var].values
-                residuals = df[s_var] - df[n_var]
-                res_df[var] = residuals
-                sta_res[var] = list(residuals)
-                all_res_dict[var] += list(residuals)
-                mean_ = np.mean(residuals).item()
-                variance = np.var(residuals).item()
-                data_skewness = skew(residuals).item()
-                data_kurtosis = kurtosis(residuals).item()
-                var_dt = [i.strftime('%Y-%m-%d') for i in residuals.index]
-                dct[var] = (mean_, variance, data_skewness, data_kurtosis, var_dt)
+        else:
+            raise NotImplementedError('Model {} is not available'.format(model))
 
-            dct['file'] = os.path.join(out_data, '{}.csv'.format(fid))
-            nldas = nldas.loc[sdf.index]
-            nldas['obs_eto'] = sdf['eto']
-            nldas.to_csv(dct['file'])
+        asce_params = grid.apply(calc_asce_params, zw=_zw, axis=1)
+        grid[['vpd', 'rn', 'u2', 'tmean', 'eto']] = pd.DataFrame(asce_params.tolist(), index=grid.index)
 
-            res_df['eto'] = sdf['eto'] - nldas['eto']
-            dct['resid'] = os.path.join(out_data, 'res_{}.csv'.format(fid))
-            res_df.to_csv(dct['resid'])
+        # TODO: gridmet ETo is not right
+        res_df = sdf[['eto']].copy()
 
-            errors[fid] = dct.copy()
+        if check_dir:
+            check_file = os.path.join(check_dir, '{}_nldas_daily.csv'.format(fid))
+            cdf = pd.read_csv(check_file, parse_dates=True, index_col='date')
+            cdf.index = cdf.index.tz_localize(PACIFIC)
+            indx = [i for i in cdf.index if i in grid.index]
+            rsq = np.corrcoef(grid.loc[indx, 'eto'], cdf.loc[indx, 'eto_asce'])[0, 0]
+            print('{} PyNLDAS/Earth Engine r2: {:.3f}'.format(row['station_name'], rsq))
 
-        except Exception as e:
-            print('Exception at {}: {}'.format(fid, e))
-            errors[fid] = 'exception'
+        dct = {}
+        for var in COMPARISON_VARS:
+            s_var, n_var = '{}_station'.format(var), '{}_nldas'.format(var)
+            df = pd.DataFrame(columns=[s_var], index=sdf.index, data=sdf[var].values)
+            df.dropna(how='any', axis=0, inplace=True)
+            df[n_var] = grid.loc[df.index, var].values
+            residuals = df[s_var] - df[n_var]
+            res_df[var] = residuals
+            sta_res[var] = list(residuals)
+            all_res_dict[var] += list(residuals)
+            mean_ = np.mean(residuals).item()
+            variance = np.var(residuals).item()
+            data_skewness = skew(residuals).item()
+            data_kurtosis = kurtosis(residuals).item()
+            var_dt = [i.strftime('%Y-%m-%d') for i in residuals.index]
+            dct[var] = (mean_, variance, data_skewness, data_kurtosis, var_dt)
+
+        dct['file'] = os.path.join(out_data, '{}.csv'.format(fid))
+        grid = grid.loc[sdf.index]
+        grid['obs_eto'] = sdf['eto']
+        grid.to_csv(dct['file'])
+
+        res_df['eto'] = sdf['eto'] - grid['eto']
+        dct['resid'] = os.path.join(out_data, 'res_{}.csv'.format(fid))
+        res_df.to_csv(dct['resid'])
+
+        errors[fid] = dct.copy()
+
+        # except Exception as e:
+        #     print('Exception at {}: {}'.format(fid, e))
+        #     errors[fid] = 'exception'
 
     with open(results, 'w') as dst:
         json.dump(errors, dst, indent=4)
@@ -175,6 +189,16 @@ def station_par_map(station_type):
         raise NotImplementedError
 
 
+def gridmet_par_map():
+    return {
+        'pet': 'eto',
+        'srad': 'rsds',
+        'tmmx': 'max_temp',
+        'tmmn': 'min_temp',
+        'vs': 'wind',
+        'vpd': 'q',
+    }
+
 def get_nldas(lon, lat, elev, start, end):
     nldas = nld.get_bycoords((lon, lat), start_date=start, end_date=end,
                              variables=['temp', 'wind_u', 'wind_v', 'humidity', 'rsds'])
@@ -194,6 +218,49 @@ def get_nldas(lon, lat, elev, start, end):
                                                q=nldas['humidity'])
 
     return nldas
+
+
+def get_gridmet(lon, lat, start, end):
+    first = True
+    df, cols = pd.DataFrame(), gridmet_par_map()
+
+    for thredds_var, variable in cols.items():
+
+        if not thredds_var:
+            continue
+
+        try:
+            g = GridMet(thredds_var, start=start, end=end, lat=lat, lon=lon)
+            s = g.get_point_timeseries()
+        except OSError as e:
+            print('Error on {}, {}'.format(variable, e))
+
+        df[variable] = s[thredds_var]
+
+        if first:
+            df['date'] = [i.strftime('%Y-%m-%d') for i in df.index]
+            df['year'] = [i.year for i in df.index]
+            df['month'] = [i.month for i in df.index]
+            df['day'] = [i.day for i in df.index]
+            df['centroid_lat'] = [lat for _ in range(df.shape[0])]
+            df['centroid_lon'] = [lon for _ in range(df.shape[0])]
+            g = GridMet('elev', lat=lat, lon=lon)
+            elev = g.get_point_elevation()
+            df['elev_m'] = [elev for _ in range(df.shape[0])]
+            first = False
+
+    df['doy'] = [i.dayofyear for i in df.index]
+
+    df['min_temp'] = df['min_temp'] - 273.15
+    df['max_temp'] = df['max_temp'] - 273.15
+
+    p_air = air_pressure(df['elev_m'])
+    ea_kpa = actual_vapor_pressure(df['q'], p_air)
+    df['ea'] = ea_kpa.copy()
+
+    df.index = df.index.tz_localize(PACIFIC)
+
+    return df
 
 
 def concatenate_station_residuals(error_json, out_file):
@@ -239,13 +306,14 @@ if __name__ == '__main__':
 
     # error_json = os.path.join(d, 'eddy_covariance_nldas_analysis', 'error_distributions.json')
     error_json = os.path.join(d, 'weather_station_data_processing', 'error_analysis', 'error_distributions.json')
-    res_json = os.path.join(d, 'weather_station_data_processing', 'error_analysis', 'residuals.json')
     hist = os.path.join(d, 'weather_station_data_processing', 'error_analysis', 'residual_histograms')
 
     # pandarallel.initialize(nb_workers=4)
 
+    model_ = 'gridmet'
+    res_json = os.path.join(d, 'weather_station_data_processing', 'error_analysis', 'residuals_{}.json'.format(model_))
     ee_check = os.path.join(d, 'weather_station_data_processing/NLDAS_data_at_stations')
-    residuals(sta, sta_data, error_json, comp_data, res_json, station_type='agri', check_dir=None)
+    residuals(sta, sta_data, error_json, comp_data, res_json, station_type='agri', model=model_)
 
     results_json = os.path.join(d, 'weather_station_data_processing', 'error_analysis',
                                 'error_propagation_etovar_1000.json')
