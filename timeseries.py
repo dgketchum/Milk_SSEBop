@@ -31,6 +31,10 @@ def compile_data(csv_dir, plot_dir):
     df.drop(columns=['FID'])
     df = df.sort_index()
 
+    et = df[['et_{}'.format(l) for l in ['all', 1, 2, 3]]].sum(axis=0) / 39
+    lc = df[['lc_{}'.format(l) for l in ['all', 1, 2, 3]]].mean(axis=0)
+    s = pd.concat([et, lc])
+
     plots = []
     colors = Category10[10]
 
