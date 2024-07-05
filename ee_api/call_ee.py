@@ -206,7 +206,7 @@ if __name__ == '__main__':
     ee.Initialize(project='ssebop-montana')
 
     export_gridded_data(SMM_MULTI, 'wudr', years=[i for i in range(1985, 2024)],
-                        description='smm_lc_et', debug=False, join_col='FID', **{'target_classes': [0, 1, 2, 3]})
+                        description='smm_lc_et', debug=False, join_col='OBJECTID', **{'target_classes': [0, 1, 2, 3]})
 
     # masks = [None, 1, 2, 3]
     # for mask_ in masks:

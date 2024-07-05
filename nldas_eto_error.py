@@ -7,22 +7,22 @@ from datetime import timedelta
 import numpy as np
 import pandas as pd
 
-from refet import Daily
+from refet import Daily, calcs
 from scipy.stats import skew, kurtosis
 
 warnings.simplefilter(action='ignore', category=FutureWarning)
 
-VAR_MAP = {'rsds': 'Rs (w/m2)',
+VAR_MAP = {'rs': 'Rs (w/m2)',
            'ea': 'Compiled Ea (kPa)',
            'min_temp': 'TMin (C)',
            'max_temp': 'TMax (C)',
-           'temp': 'TAvg (C)',
-           'wind': 'Windspeed (m/s)',
+           'mean_temp': 'TAvg (C)',
+           'wind': 'ws_2m (m/s)',
            'eto': 'ETo (mm)'}
 
 RENAME_MAP = {v: k for k, v in VAR_MAP.items()}
 
-COMPARISON_VARS = ['vpd', 'rn', 'tmean', 'u2', 'eto']
+COMPARISON_VARS = ['ea', 'rn', 'mean_temp', 'wind', 'eto']
 
 STR_MAP = {
     'rn': r'Net Radiation [MJ m$^{-2}$ d$^{-1}$]',
@@ -32,31 +32,23 @@ STR_MAP = {
     'eto': r'ASCE Grass Reference Evapotranspiration [mm day$^{-1}$]'
 }
 
-STR_MAP_SIMPLE = {
-    'rn': r'Rn',
-    'vpd': r'VPD',
-    'tmean': r'Mean Temp',
-    'u2': r'Wind Speed',
-    'eto': r'ETo'
-}
-
 LIMITS = {'vpd': 3,
-          'rn': 0.8,
+          'rs': 0.8,
           'u2': 12,
-          'tmean': 12.5,
+          'mean_temp': 12.5,
           'eto': 5}
 
 PACIFIC = pytz.timezone('US/Pacific')
 
 
-def residuals(stations, station_data, results, out_data, resids, station_type='ec', model='nldas2', check_dir=None):
-
+def residuals(stations, station_data, out_data, resids, model='nldas2', ee_check=None):
+    kw = station_par_map('agri')
     station_list = pd.read_csv(stations, index_col=kw['index'])
 
     if model == 'gridmet':
         station_list = station_list[station_list['latitude'] <= 49.0]
 
-    errors, all_res_dict = {}, {v: [] for v in COMPARISON_VARS}
+    all_res_dict = {v: [] for v in COMPARISON_VARS}
     for i, (fid, row) in enumerate(station_list.iterrows()):
 
         if fid != 'bfam':
@@ -68,92 +60,34 @@ def residuals(stations, station_data, results, out_data, resids, station_type='e
         # try:
         sdf_file = os.path.join(station_data, '{}_output.xlsx'.format(fid))
         sdf = pd.read_excel(sdf_file, parse_dates=True, index_col='date')
-
-        s = pd.to_datetime(sdf.index[0]) - timedelta(days=2)
-        e = pd.to_datetime(sdf.index[-1]) + timedelta(days=2)
-
         sdf.index = sdf.index.tz_localize(PACIFIC)
-        sdf = sdf.rename(RENAME_MAP, axis=1)
+        sdf.rename(columns=RENAME_MAP, inplace=True)
         sdf['doy'] = [i.dayofyear for i in sdf.index]
+        sdf['vpd'] = sdf.apply(_vpd, axis=1)
+        sdf['rn'] = sdf.apply(_rn, lat=row['latitude'], elev=row['elev_m'], zw=row['anemom_height_m'], axis=1)
+        sdf = sdf[COMPARISON_VARS]
 
-        _zw = 10.0 if station_type == 'ec' else row['anemom_height_m']
+        grid_file = os.path.join(out_data, '{}.csv'.format(fid))
+        gdf = pd.read_csv(grid_file, index_col='date_str', parse_dates=True)
+        gdf.rename(columns=RENAME_MAP, inplace=True)
+        gdf['vpd'] = sdf.apply(_vpd, axis=1)
+        gdf = gdf[COMPARISON_VARS]
 
-        def calc_asce_params(r, zw):
-            asce = Daily(tmin=r['min_temp'],
-                         tmax=r['max_temp'],
-                         ea=r['ea'],
-                         rs=r['rsds'] * 0.0036,
-                         uz=r['wind'],
-                         zw=zw,
-                         doy=r['doy'],
-                         elev=row[kw['elev']],
-                         lat=row[kw['lat']])
-
-            vpd = asce.vpd[0]
-            rn = asce.rn[0]
-            u2 = asce.u2[0]
-            mean_temp = asce.tmean[0]
-            eto = asce.eto()[0]
-
-            return vpd, rn, u2, mean_temp, eto
-
-        asce_params = sdf.apply(calc_asce_params, zw=_zw, axis=1)
-        sdf[['vpd', 'rn', 'u2', 'tmean', 'eto']] = pd.DataFrame(asce_params.tolist(), index=sdf.index)
-
-        if model == 'nldas2':
-            grid = get_nldas(row[kw['lon']], row[kw['lat']], row[kw['elev']], start=s, end=e)
-
-        elif model == 'gridmet':
-            grid = get_gridmet(row[kw['lon']], row[kw['lat']], start=s, end=e)
-
-        else:
-            raise NotImplementedError('Model {} is not available'.format(model))
-
-        # TODO: gridmet ETo is not right
         res_df = sdf[['eto']].copy()
 
-        if check_dir:
-            check_file = os.path.join(check_dir, '{}_nldas_daily.csv'.format(fid))
-            cdf = pd.read_csv(check_file, parse_dates=True, index_col='date')
-            cdf.index = cdf.index.tz_localize(PACIFIC)
-            indx = [i for i in cdf.index if i in grid.index]
-            rsq = np.corrcoef(grid.loc[indx, 'eto'], cdf.loc[indx, 'eto_asce'])[0, 0]
-            print('{} PyNLDAS/Earth Engine r2: {:.3f}'.format(row['station_name'], rsq))
-
-        dct = {}
         for var in COMPARISON_VARS:
             s_var, n_var = '{}_station'.format(var), '{}_nldas'.format(var)
             df = pd.DataFrame(columns=[s_var], index=sdf.index, data=sdf[var].values)
             df.dropna(how='any', axis=0, inplace=True)
-            df[n_var] = grid.loc[df.index, var].values
+            df[n_var] = gdf.loc[df.index, var].values
             residuals = df[s_var] - df[n_var]
             res_df[var] = residuals
             sta_res[var] = list(residuals)
             all_res_dict[var] += list(residuals)
-            mean_ = np.mean(residuals).item()
-            variance = np.var(residuals).item()
-            data_skewness = skew(residuals).item()
-            data_kurtosis = kurtosis(residuals).item()
-            var_dt = [i.strftime('%Y-%m-%d') for i in residuals.index]
-            dct[var] = (mean_, variance, data_skewness, data_kurtosis, var_dt)
-
-        dct['file'] = os.path.join(out_data, '{}.csv'.format(fid))
-        grid = grid.loc[sdf.index]
-        grid['obs_eto'] = sdf['eto']
-        grid.to_csv(dct['file'])
-
-        res_df['eto'] = sdf['eto'] - grid['eto']
-        dct['resid'] = os.path.join(out_data, 'res_{}.csv'.format(fid))
-        res_df.to_csv(dct['resid'])
-
-        errors[fid] = dct.copy()
 
         # except Exception as e:
         #     print('Exception at {}: {}'.format(fid, e))
-        #     errors[fid] = 'exception'
-
-    with open(results, 'w') as dst:
-        json.dump(errors, dst, indent=4)
+        #     errors[fid] = 'exception')
 
     with open(resids, 'w') as dst:
         json.dump(all_res_dict, dst, indent=4)
@@ -176,6 +110,27 @@ def station_par_map(station_type):
                 'end': 'record_end'}
     else:
         raise NotImplementedError
+
+
+def _vpd(r):
+    es = calcs._sat_vapor_pressure(r['mean_temp'])
+    vpd = es - r['ea']
+    return vpd[0]
+
+
+def _rn(r, lat, elev, zw):
+    asce = Daily(tmin=r['min_temp'],
+                 tmax=r['max_temp'],
+                 rs=r['rs'],
+                 ea=r['ea'],
+                 uz=r['wind'],
+                 zw=zw,
+                 doy=r['doy'],
+                 elev=elev,
+                 lat=lat)
+
+    rn = asce.rn[0]
+    return rn
 
 
 def concatenate_station_residuals(error_json, out_file):
@@ -206,6 +161,37 @@ def concatenate_station_residuals(error_json, out_file):
     df.to_csv(out_file)
 
 
+def check_file(lat, elev):
+    def calc_asce_params(r, zw):
+        asce = Daily(tmin=r['temperature_min'],
+                     tmax=r['temperature_max'],
+                     rs=r['shortwave_radiation'] * 0.0036,
+                     ea=r['ea'],
+                     uz=r['wind'],
+                     zw=zw,
+                     doy=r['doy'],
+                     elev=elev,
+                     lat=lat)
+
+        vpd = asce.vpd[0]
+        rn = asce.rn[0]
+        u2 = asce.u2[0]
+        mean_temp = asce.tmean[0]
+        eto = asce.eto()[0]
+
+        return vpd, rn, u2, mean_temp, eto
+
+    check_file = ('/media/research/IrrigationGIS/milk/weather_station_data_processing/'
+                  'NLDAS_data_at_stations/bfam_nldas_daily.csv')
+    dri = pd.read_csv(check_file, parse_dates=True, index_col='date')
+    dri['doy'] = [i.dayofyear for i in dri.index]
+    dri['ea'] = calcs._actual_vapor_pressure(pair=calcs._air_pressure(elev),
+                                             q=dri['specific_humidity'])
+    asce_params = dri.apply(calc_asce_params, zw=10, axis=1)
+    dri[['vpd_chk', 'rn_chk', 'u2_chk', 'tmean_chk', 'eto_chk']] = pd.DataFrame(asce_params.tolist(),
+                                                                                index=dri.index)
+
+
 if __name__ == '__main__':
 
     d = '/media/research/IrrigationGIS/milk'
@@ -213,26 +199,22 @@ if __name__ == '__main__':
         home = os.path.expanduser('~')
         d = os.path.join(home, 'data', 'IrrigationGIS', 'milk')
 
+    # pandarallel.initialize(nb_workers=4)
+
     station_meta = os.path.join(d, 'bias_ratio_data_processing/ETo/'
                                    'final_milk_river_metadata_nldas_eto_bias_ratios_long_term_mean.csv')
-
     sta_data = os.path.join(d, 'weather_station_data_processing', 'corrected_data')
-    grid_data = os.path.join(d, 'weather_station_data_processing', 'processed_data')
 
-    # error_json = os.path.join(d, 'eddy_covariance_nldas_analysis', 'error_distributions.json')
+    model_ = 'nldas2'
+    grid_data = os.path.join(d, 'weather_station_data_processing', 'gridded', model_)
     error_json = os.path.join(d, 'weather_station_data_processing', 'error_analysis', 'error_distributions.json')
     hist = os.path.join(d, 'weather_station_data_processing', 'error_analysis', 'residual_histograms')
 
-    # pandarallel.initialize(nb_workers=4)
-
-    model_ = 'nldas2'
-    res_json = os.path.join(d, 'weather_station_data_processing', 'error_analysis', 'residuals_{}.json'.format(model_))
+    res_json = os.path.join(d, 'weather_station_data_processing', 'error_analysis',
+                            'residuals_{}_test.json'.format(model_))
     ee_check = os.path.join(d, 'weather_station_data_processing/NLDAS_data_at_stations')
-    residuals(station_meta, sta_data, error_json, grid_data, res_json, station_type='agri', model=model_)
 
-    results_json = os.path.join(d, 'weather_station_data_processing', 'error_analysis',
-                                'error_propagation_etovar_1000.json')
-    # error_propagation(error_json, sta, results_json, station_type='agri', num_samples=1000)
+    residuals(station_meta, sta_data, grid_data, res_json, model=model_)
 
     joined_resid = os.path.join(d, 'weather_station_data_processing', 'error_analysis', 'joined_residuals.csv')
     # concatenate_station_residuals(error_json, joined_resid)

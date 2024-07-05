@@ -236,9 +236,10 @@ class WeatherQC:
             choice_loop = True
             while choice_loop:
 
-                # user = utils.get_int_input(0, 9, "\nEnter your selection: ")
-                user = 0
-                print('WARNING: corrections have been manually disabled in line 241 of agweatherqaqc.py')
+                user = utils.get_int_input(0, 9, "\nEnter your selection: ")
+
+                # user = 3
+                # print('\nWARNING: corrections have been manually set to windspeed only in line 241 of agweatherqaqc.py')
                 # The following if statements check whether user tries to correct a variable that was not provided
                 # or make sure correction is being done in the ideal order
                 if user == 2 and self.column_ser.tdew == -1:
