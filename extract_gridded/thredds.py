@@ -7,7 +7,6 @@ from datetime import datetime
 from urllib.parse import urlunparse
 
 import numpy as np
-
 from numpy import empty, float32, datetime64, timedelta64, argmin, abs, array
 from rasterio import open as rasopen
 from rasterio.crs import CRS
@@ -164,7 +163,7 @@ class Thredds:
             new_array = empty(shape=(array.shape[0], round(array.shape[1] * res_coeff),
                                      round(array.shape[2] * res_coeff)), dtype=float32)
             aff = src.transform
-            new_affine = Affine(aff.a / res_coeff, aff.b, aff.c, aff.d, aff.e / res_coeff, aff.f)
+            new_affine = Affine(aff.a / res_coeff, aff.b, aff.c, aff.r, aff.e / res_coeff, aff.f)
 
             profile.update({'transform': self.target_profile['transform'],
                             'width': self.target_profile['width'],
@@ -211,7 +210,6 @@ class Thredds:
             dst.write(arr)
         return None
 
-
 class GridMet(Thredds):
     """ U of I Gridmet
     
@@ -226,7 +224,7 @@ class GridMet(Thredds):
         - 'erc' : energy release component [-]
         - 'fm100' : 100-hour dead fuel moisture [%]
         - 'fm1000' : 1000-hour dead fuel moisture [%]
-        - 'pdsi' : Palmer Drough Severity Index [-]
+        - 'pdsi' : Palmer Drought Severity Index [-]
         - 'pet' : daily reference potential evapotranspiration [mm]
         - 'pr' : daily accumulated precipitation [mm]
         - 'rmax' : daily maximum relative humidity [%]
@@ -254,8 +252,7 @@ class GridMet(Thredds):
 
     """
 
-    def __init__(self, variable=None, date=None, start=None, end=None, bbox=None,
-                 target_profile=None, clip_feature=None, lat=None, lon=None):
+    def __init__(self, variable=None, date=None, start=None, end=None, lat=None, lon=None):
         Thredds.__init__(self)
 
         self.date = date
@@ -275,9 +272,6 @@ class GridMet(Thredds):
             if self.start and self.end is None:
                 raise AttributeError('Must set both start and end date')
 
-        self.bbox = bbox
-        self.target_profile = target_profile
-        self.clip_feature = clip_feature
         self.lat = lat
         self.lon = lon
 
@@ -327,91 +321,6 @@ class GridMet(Thredds):
         if not self.bbox and not self.lat:
             raise AttributeError('No bbox or coordinates given')
 
-    def subset_daily_tif(self, out_filename=None):
-
-        url = self._build_url()
-        url = url + '#fillmismatch'
-        xray = open_dataset(url, decode_times=True)
-
-        north_ind = argmin(abs(xray.lat.values - (self.bbox.north + 1.)))
-        south_ind = argmin(abs(xray.lat.values - (self.bbox.south - 1.)))
-        west_ind = argmin(abs(xray.lon.values - (self.bbox.west - 1.)))
-        east_ind = argmin(abs(xray.lon.values - (self.bbox.east + 1.)))
-
-        north_val = xray.lat.values[north_ind]
-        south_val = xray.lat.values[south_ind]
-        west_val = xray.lon.values[west_ind]
-        east_val = xray.lon.values[east_ind]
-
-        setattr(self, 'src_bounds_wsen', (west_val, south_val,
-                                          east_val, north_val))
-
-        if self.variable == 'elev':
-            subset = xray.loc[dict(lat=slice((self.bbox.north + 1),
-                                             (self.bbox.south - 1)),
-                                   lon=slice((self.bbox.west - 1),
-                                             (self.bbox.east + 1)))]
-            setattr(self, 'width', subset.dims['lon'])
-            setattr(self, 'height', subset.dims['lat'])
-            arr = subset.elevation.values
-            arr = self.conform(arr, out_file=out_filename)
-            return arr
-
-        else:
-            xray = xray.rename({'day': 'time'})
-            subset = xray.loc[dict(time=slice(self.start, self.end),
-                                   lat=slice(north_val, south_val),
-                                   lon=slice(west_val, east_val))]
-
-            setattr(self, 'width', subset.dims['lon'])
-            setattr(self, 'height', subset.dims['lat'])
-            arr = subset[self.kwords[self.variable]].values
-            arr = self.conform(arr, out_file=out_filename)
-            rmtree(self.temp_dir)
-            return arr
-
-    def subset_nc(self, out_filename=None, return_array=False):
-
-        url = self._build_url()
-        url = url + '#fillmismatch'
-        xray = open_dataset(url)
-
-        north_ind = argmin(abs(xray.lat.values - (self.bbox.north + 1.)))
-        south_ind = argmin(abs(xray.lat.values - (self.bbox.south - 1.)))
-        west_ind = argmin(abs(xray.lon.values - (self.bbox.west - 1.)))
-        east_ind = argmin(abs(xray.lon.values - (self.bbox.east + 1.)))
-
-        north_val = xray.lat.values[north_ind]
-        south_val = xray.lat.values[south_ind]
-        west_val = xray.lon.values[west_ind]
-        east_val = xray.lon.values[east_ind]
-
-        setattr(self, 'src_bounds_wsen', (west_val, south_val,
-                                          east_val, north_val))
-
-        if self.variable != 'elev':
-            xray = xray.rename({'day': 'time'})
-            subset = xray.loc[dict(time=slice(self.start, self.end),
-                                   lat=slice(north_val, south_val),
-                                   lon=slice(west_val, east_val))]
-
-            date_ind = self._date_index()
-            subset['time'] = date_ind
-            if out_filename:
-                subset.to_netcdf(out_filename)
-            if return_array:
-                return subset
-
-        else:
-            subset = xray.loc[dict(lat=slice((self.bbox.north + 1),
-                                             (self.bbox.south - 1)),
-                                   lon=slice((self.bbox.west - 1),
-                                             (self.bbox.east + 1)))]
-            if out_filename:
-                subset.to_netcdf(out_filename)
-            if return_array:
-                return subset
-
     def get_point_timeseries(self):
 
         url = self._build_url()
@@ -428,15 +337,6 @@ class GridMet(Thredds):
         df.columns = [self.variable]
         return df
 
-    def get_point_elevation(self):
-
-        url = self._build_url()
-        url = url + '#fillmismatch'
-        xray = open_dataset(url)
-        subset = xray.sel(lon=self.lon, lat=self.lat, method='nearest')
-        elev = subset.get('elevation').values[0]
-        return elev
-
     def _build_url(self):
 
         # ParseResult('scheme', 'netloc', 'path', 'params', 'query', 'fragment')
@@ -451,15 +351,6 @@ class GridMet(Thredds):
 
         return url
 
-    def write_netcdf(self, outputroot):
-        url = self._build_url()
-        xray = open_dataset(url)
-        if self.variable != 'elev':
-            subset = xray.loc[dict(day=slice(self.start, self.end))]
-            subset.rename({'day': 'time'}, inplace=True)
-        else:
-            subset = xray
-        subset.to_netcdf(path=outputroot, engine='netcdf4')
 
 
 # from CGMorton's RefET (github.com/WSWUP/RefET)
@@ -535,5 +426,32 @@ def actual_vapor_pressure(q, pair):
     ea *= q
 
     return ea
+
+
+# from CGMorton's RefET (github.com/WSWUP/RefET)
+def wind_height_adjust(uz, zw):
+    """Wind speed at 2 m height based on full logarithmic profile (Eq. 33)
+
+    Parameters
+    ----------
+    uz : scalar or array_like of shape(M, )
+        Wind speed at measurement height [m s-1].
+    zw : scalar or array_like of shape(M, )
+        Wind measurement height [m].
+
+    Returns
+    -------
+    ndarray
+        Wind speed at 2 m height [m s-1].
+
+    """
+    return uz * 4.87 / np.log(67.8 * zw - 5.42)
+
+
+def gridmet_elevation(lat, lon):
+    g = GridMet('elev', lat=lat, lon=lon)
+    elev = g.get_point_elevation()
+    return elev
+
 
 # ========================= EOF ====================================================================

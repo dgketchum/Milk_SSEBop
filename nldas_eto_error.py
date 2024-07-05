@@ -6,11 +6,8 @@ from datetime import timedelta
 
 import numpy as np
 import pandas as pd
-import pynldas2 as nld
-from utils.thredds import GridMet
-from utils.thredds import air_pressure, actual_vapor_pressure
 
-from refet import Daily, calcs
+from refet import Daily
 from scipy.stats import skew, kurtosis
 
 warnings.simplefilter(action='ignore', category=FutureWarning)
@@ -22,13 +19,6 @@ VAR_MAP = {'rsds': 'Rs (w/m2)',
            'temp': 'TAvg (C)',
            'wind': 'Windspeed (m/s)',
            'eto': 'ETo (mm)'}
-
-RESAMPLE_MAP = {'rsds': 'mean',
-                'humidity': 'mean',
-                'min_temp': 'min',
-                'max_temp': 'max',
-                'wind': 'mean',
-                'doy': 'first'}
 
 RENAME_MAP = {v: k for k, v in VAR_MAP.items()}
 
@@ -61,7 +51,6 @@ PACIFIC = pytz.timezone('US/Pacific')
 
 def residuals(stations, station_data, results, out_data, resids, station_type='ec', model='nldas2', check_dir=None):
 
-    kw = station_par_map(station_type)
     station_list = pd.read_csv(stations, index_col=kw['index'])
 
     if model == 'gridmet':
@@ -69,6 +58,9 @@ def residuals(stations, station_data, results, out_data, resids, station_type='e
 
     errors, all_res_dict = {}, {v: [] for v in COMPARISON_VARS}
     for i, (fid, row) in enumerate(station_list.iterrows()):
+
+        if fid != 'bfam':
+            continue
 
         sta_res = {v: [] for v in COMPARISON_VARS}
         print('{} of {}: {}'.format(i + 1, station_list.shape[0], fid))
@@ -116,9 +108,6 @@ def residuals(stations, station_data, results, out_data, resids, station_type='e
 
         else:
             raise NotImplementedError('Model {} is not available'.format(model))
-
-        asce_params = grid.apply(calc_asce_params, zw=_zw, axis=1)
-        grid[['vpd', 'rn', 'u2', 'tmean', 'eto']] = pd.DataFrame(asce_params.tolist(), index=grid.index)
 
         # TODO: gridmet ETo is not right
         res_df = sdf[['eto']].copy()
@@ -189,80 +178,6 @@ def station_par_map(station_type):
         raise NotImplementedError
 
 
-def gridmet_par_map():
-    return {
-        'pet': 'eto',
-        'srad': 'rsds',
-        'tmmx': 'max_temp',
-        'tmmn': 'min_temp',
-        'vs': 'wind',
-        'vpd': 'q',
-    }
-
-def get_nldas(lon, lat, elev, start, end):
-    nldas = nld.get_bycoords((lon, lat), start_date=start, end_date=end,
-                             variables=['temp', 'wind_u', 'wind_v', 'humidity', 'rsds'])
-
-    nldas = nldas.tz_convert(PACIFIC)
-
-    wind_u = nldas['wind_u']
-    wind_v = nldas['wind_v']
-    nldas['wind'] = np.sqrt(wind_v ** 2 + wind_u ** 2)
-
-    nldas['min_temp'] = nldas['temp'] - 273.15
-    nldas['max_temp'] = nldas['temp'] - 273.15
-    nldas['doy'] = [i.dayofyear for i in nldas.index]
-
-    nldas = nldas.resample('D').agg(RESAMPLE_MAP)
-    nldas['ea'] = calcs._actual_vapor_pressure(pair=calcs._air_pressure(elev),
-                                               q=nldas['humidity'])
-
-    return nldas
-
-
-def get_gridmet(lon, lat, start, end):
-    first = True
-    df, cols = pd.DataFrame(), gridmet_par_map()
-
-    for thredds_var, variable in cols.items():
-
-        if not thredds_var:
-            continue
-
-        try:
-            g = GridMet(thredds_var, start=start, end=end, lat=lat, lon=lon)
-            s = g.get_point_timeseries()
-        except OSError as e:
-            print('Error on {}, {}'.format(variable, e))
-
-        df[variable] = s[thredds_var]
-
-        if first:
-            df['date'] = [i.strftime('%Y-%m-%d') for i in df.index]
-            df['year'] = [i.year for i in df.index]
-            df['month'] = [i.month for i in df.index]
-            df['day'] = [i.day for i in df.index]
-            df['centroid_lat'] = [lat for _ in range(df.shape[0])]
-            df['centroid_lon'] = [lon for _ in range(df.shape[0])]
-            g = GridMet('elev', lat=lat, lon=lon)
-            elev = g.get_point_elevation()
-            df['elev_m'] = [elev for _ in range(df.shape[0])]
-            first = False
-
-    df['doy'] = [i.dayofyear for i in df.index]
-
-    df['min_temp'] = df['min_temp'] - 273.15
-    df['max_temp'] = df['max_temp'] - 273.15
-
-    p_air = air_pressure(df['elev_m'])
-    ea_kpa = actual_vapor_pressure(df['q'], p_air)
-    df['ea'] = ea_kpa.copy()
-
-    df.index = df.index.tz_localize(PACIFIC)
-
-    return df
-
-
 def concatenate_station_residuals(error_json, out_file):
     with open(error_json, 'r') as f:
         meta = json.load(f)
@@ -298,11 +213,11 @@ if __name__ == '__main__':
         home = os.path.expanduser('~')
         d = os.path.join(home, 'data', 'IrrigationGIS', 'milk')
 
-    # sta = os.path.join(d, '/eddy_covariance_data_processing/eddy_covariance_stations.csv'
-    sta = os.path.join(d, 'bias_ratio_data_processing/ETo/'
-                          'final_milk_river_metadata_nldas_eto_bias_ratios_long_term_mean.csv')
+    station_meta = os.path.join(d, 'bias_ratio_data_processing/ETo/'
+                                   'final_milk_river_metadata_nldas_eto_bias_ratios_long_term_mean.csv')
+
     sta_data = os.path.join(d, 'weather_station_data_processing', 'corrected_data')
-    comp_data = os.path.join(d, 'weather_station_data_processing', 'comparison_data')
+    grid_data = os.path.join(d, 'weather_station_data_processing', 'processed_data')
 
     # error_json = os.path.join(d, 'eddy_covariance_nldas_analysis', 'error_distributions.json')
     error_json = os.path.join(d, 'weather_station_data_processing', 'error_analysis', 'error_distributions.json')
@@ -310,10 +225,10 @@ if __name__ == '__main__':
 
     # pandarallel.initialize(nb_workers=4)
 
-    model_ = 'gridmet'
+    model_ = 'nldas2'
     res_json = os.path.join(d, 'weather_station_data_processing', 'error_analysis', 'residuals_{}.json'.format(model_))
     ee_check = os.path.join(d, 'weather_station_data_processing/NLDAS_data_at_stations')
-    residuals(sta, sta_data, error_json, comp_data, res_json, station_type='agri', model=model_)
+    residuals(station_meta, sta_data, error_json, grid_data, res_json, station_type='agri', model=model_)
 
     results_json = os.path.join(d, 'weather_station_data_processing', 'error_analysis',
                                 'error_propagation_etovar_1000.json')
