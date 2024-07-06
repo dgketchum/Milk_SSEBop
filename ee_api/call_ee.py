@@ -104,6 +104,7 @@ def export_gridded_data(tables, bucket, years, description, debug=False, clip_fc
             lc_band = lc_band.reproject(crs='EPSG:5070', scale=30).resample('bilinear')
 
             first, select_ = True, None
+            et_bands, lc_bands = [], []
 
             for target_class in target_classes:
 
@@ -111,18 +112,20 @@ def export_gridded_data(tables, bucket, years, description, debug=False, clip_fc
 
                     lc_mask = lc_band.eq(target_class)
                     lc_name = 'lc_{}'.format(target_class)
-                    lc_area = lc_mask.multiply(area).rename(lc_name).divide(1e6)
+                    lc_area = lc_mask.multiply(area).rename(lc_name)
 
                     et_band = et.mask(lc_mask)
                     et_name = 'et_{}'.format(target_class)
-                    et_area = et_band.multiply(area).rename(et_name).divide(1e9)
+                    et_area = et_band.divide(1000.0).rename(et_name)  # to meters
+                    et_bands.append(et_name), lc_bands.append(lc_name)
 
                 else:
                     lc_mask = lc_band.gt(-1)
                     lc_name = 'lc_all'
-                    lc_area = lc_mask.multiply(area).rename(lc_name).divide(1e6)
+                    lc_area = lc_mask.multiply(area).rename(lc_name)
                     et_name = 'et_all'
-                    et_area = et.mask(lc_mask).multiply(area).rename(et_name).divide(1e9)
+                    et_area = et.mask(lc_mask).divide(1000.0).rename(et_name)  # to meters
+                    et_bands.append(et_name), lc_bands.append(lc_name)
 
                 if first:
                     bands = et_area.addBands([lc_area])
@@ -132,28 +135,40 @@ def export_gridded_data(tables, bucket, years, description, debug=False, clip_fc
                     bands = bands.addBands([et_area, lc_area])
                     [select_.append(b) for b in [lc_name, et_name]]
 
+            et_data = bands.select(et_bands).reduceRegions(collection=fc,
+                                                           reducer=ee.Reducer.mean(),
+                                                           scale=30)
+            lc_data = bands.select(lc_bands).reduceRegions(collection=fc,
+                                                           reducer=ee.Reducer.sum(),
+                                                           scale=30)
             if debug:
-                fc = get_test_fc()
-                data = bands.reduceRegions(collection=fc,
-                                           reducer=ee.Reducer.sum(),
-                                           scale=30)
-                info = data.getInfo()
 
-            data = bands.reduceRegions(collection=fc,
-                                       reducer=ee.Reducer.sum(),
-                                       scale=30)
+                et_data = et_data.getInfo()
+                lc_data = lc_data.getInfo()
 
-            out_desc = '{}_{}_{}'.format(description, yr, month)
+            out_desc = '{}_et_{}_{}'.format(description, yr, month)
             task = ee.batch.Export.table.toCloudStorage(
-                data,
+                et_data,
                 description=out_desc,
                 bucket=bucket,
                 fileNamePrefix=out_desc,
                 fileFormat='CSV',
-                selectors=select_)
+                selectors=[join_col] + et_bands)
+
+            task.start()
+
+            out_desc = '{}_lc_{}_{}'.format(description, yr, month)
+            task = ee.batch.Export.table.toCloudStorage(
+                lc_data,
+                description=out_desc,
+                bucket=bucket,
+                fileNamePrefix=out_desc,
+                fileFormat='CSV',
+                selectors=[join_col] + lc_bands)
 
             task.start()
             print(out_desc)
+
 
 def export_mean_annual_raster(bucket, years, description, mask=None, clip_fc=None, resolution=30):
     ee.Initialize()
