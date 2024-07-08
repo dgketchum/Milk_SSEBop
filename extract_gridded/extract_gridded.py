@@ -12,12 +12,12 @@ from thredds import GridMet
 
 PACIFIC = pytz.timezone('US/Pacific')
 
-RESAMPLE_MAP = {'rsds': 'mean',
+RESAMPLE_MAP = {'rsds': 'sum',
                 'humidity': 'mean',
                 'min_temp': 'min',
                 'max_temp': 'max',
                 'wind': 'mean',
-                'rn': 'mean',
+                'rn': 'sum',
                 'vpd': 'mean',
                 'eto': 'sum'}
 
@@ -168,7 +168,7 @@ if __name__ == '__main__':
         home = os.path.expanduser('~')
         d = os.path.join(home, 'data', 'IrrigationGIS', 'milk')
 
-    pandarallel.initialize(nb_workers=4)
+    pandarallel.initialize(nb_workers=8)
 
     station_meta = os.path.join(d, 'bias_ratio_data_processing/ETo/'
                                    'final_milk_river_metadata_nldas_eto_bias_ratios_long_term_mean.csv')
@@ -176,5 +176,5 @@ if __name__ == '__main__':
     grid_data_dir = os.path.join(d, 'weather_station_data_processing', 'gridded')
 
     extract_gridded(station_meta, grid_data_dir, model='nldas2')
-    extract_gridded(station_meta, grid_data_dir, model='gridmet')
+    # extract_gridded(station_meta, grid_data_dir, model='gridmet')
 # ========================= EOF ====================================================================
