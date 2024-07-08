@@ -8,7 +8,15 @@ import seaborn as sns
 from scipy.stats import skew, kurtosis
 from scipy.stats import linregress
 
-from nldas_eto_error import LIMITS, STR_MAP, STR_MAP_SIMPLE
+from nldas_eto_error import LIMITS
+
+STR_MAP_SIMPLE = {
+    'rn': r'Rn',
+    'vpd': r'VPD',
+    'mean_temp': r'Mean Temp',
+    'wind': r'Wind Speed',
+    'eto': r'ETo'
+}
 
 large = 22
 med = 16
@@ -31,6 +39,11 @@ params = {'axes.titlesize': large,
           }
 plt.rcParams.update(params)
 sns.set_style('white', {'axes.linewidth': 0.5})
+
+LIMITS = {'vpd': 3,
+          'rn': 10,
+          'wind': 12,
+          'mean_temp': 15}
 
 
 def plot_residual_met_histograms(resids_file, plot_dir):
@@ -72,57 +85,59 @@ def plot_residual_met_histograms(resids_file, plot_dir):
         plt.savefig(plot_path)
 
 
-def plot_eto_var_scatter_histograms(joined_resid_csv, plot_dir):
-    df = pd.read_csv(joined_resid_csv, index_col=0)
+def plot_eto_var_scatter_histograms(resid_json, plot_dir):
+    with open(resid_json, 'r') as f:
+        dct = json.load(f)
 
-    vars = [c for c in df.columns if c != 'eto']
-    first = True
+    vars = [c for c in LIMITS.keys()]
 
     fig, axes = plt.subplots(2, 2, figsize=(10, 12), dpi=600)
     axes = axes.flatten()
 
-    for i, v in enumerate(vars):
+    dct = {k: v for k, v in dct.items() if len(v['eto']) > 0}
 
-        print(v)
+    for i, var in enumerate(vars):
+
+        data = [v[var] for k, v in dct.items()]
+
+        target = [d[0] for d in data]
+        target = np.array([d for sub in target for d in sub])
+
+        eto = [d[1] for d in data]
+        eto = np.array([d for sub in eto for d in sub])
+
+        print(var)
         ax_main = axes[i]
 
-        ax_main.scatter(df['eto'].values, df[v].values, s=2, alpha=.9,
+        ax_main.scatter(eto, target, s=2, alpha=.9,
                         c=sns.color_palette('rocket')[0], edgecolors='gray', linewidths=.5)
 
-        ax_main.scatter(df['eto'].values.mean(), df[v].values.mean(), s=10, alpha=.9, color='red')
+        ax_main.scatter(eto.mean(), target.mean(), s=10, alpha=.9, color='red')
 
-        ax_main.set_ylabel(STR_MAP[v])
+        ax_main.set_ylabel(STR_MAP_SIMPLE[var])
 
         ax_main.axvline(0, color='gray', alpha=0.7)
         ax_main.axhline(0, color='gray', alpha=0.7)
 
-        slope, intercept, r_value, p_value, std_err = linregress(df['eto'], df[v])
+        slope, intercept, r_value, p_value, std_err = linregress(eto, target)
         r_squared = r_value ** 2
 
-        if first:
-            textstr = '\n'.join((
-                r'$n={:,}$'.format(df.shape[0]),
-                r'$r^2$: {:.2f}'.format(r_squared)))
-            props = dict(boxstyle='round', facecolor='white')
-            ax_main.text(0.05, 0.95, textstr, transform=ax_main.transAxes, fontsize=14,
-                         verticalalignment='top', bbox=props)
-
-            first = False
-
-        else:
-            textstr = r'$r^2$: {:.2f}'.format(r_squared)
-            props = dict(boxstyle='round', facecolor='white')
-            ax_main.text(0.05, 0.95, textstr, transform=ax_main.transAxes, fontsize=14,
-                         verticalalignment='top', bbox=props)
+        textstr = '\n'.join((
+            r'$n={:,}$'.format(target.shape[0]),
+            r'$r^2$: {:.2f}'.format(r_squared)))
+        props = dict(boxstyle='round', facecolor='white')
+        ax_main.text(0.05, 0.95, textstr, transform=ax_main.transAxes, fontsize=14,
+                     verticalalignment='top', bbox=props)
 
         ax_main.set_xlim(-6, 6)
+        ax_main.set_ylim(-1 * LIMITS[var], LIMITS[var])
 
     textstr = 'ETo [mm day$^{-1}$]'
     props = dict(facecolor='white')
     fig.text(0.5, 0.05, textstr, ha='center', va='top', fontsize=16, bbox=props)
 
     plt.tight_layout(rect=[0, 0.05, 1, 1])
-    plot_path = os.path.join(plot_dir, 'eto_vars_scatter_plot.png'.format(v))
+    plot_path = os.path.join(plot_dir, 'eto_vars_scatter_plot.png'.format(var))
     plt.savefig(plot_path)
     plt.close()
 
@@ -190,13 +205,15 @@ if __name__ == '__main__':
 
     met_residuals = os.path.join(d, 'weather_station_data_processing', 'error_analysis', 'residuals.json')
 
-    joined_resid = os.path.join(d, 'weather_station_data_processing', 'error_analysis', 'joined_residuals.csv')
+    model_ = 'gridmet'
+    residuals = os.path.join(d, 'weather_station_data_processing', 'error_analysis',
+                             'station_residuals_{}.json'.format(model_))
 
     hist = os.path.join(d, 'weather_station_data_processing', 'error_analysis', 'joined_resid_hist')
     # plot_residual_met_histograms(met_residuals, hist)
 
-    scatter = os.path.join(d, 'weather_station_data_processing', 'error_analysis', 'joined_resid_scatter')
-    # plot_eto_var_scatter_histograms(joined_resid, scatter)
+    scatter = os.path.join(d, 'weather_station_data_processing', 'error_analysis', 'joined_resid_scatter', model_)
+    plot_eto_var_scatter_histograms(residuals, scatter)
 
     heat = os.path.join(d, 'weather_station_data_processing', 'error_analysis', 'heatmap')
     # plot_resid_corr_heatmap(joined_resid, heat)
@@ -204,5 +221,5 @@ if __name__ == '__main__':
     decomp = os.path.join(d, 'weather_station_data_processing', 'error_analysis', 'var_decomp_stations_tprop.csv')
     decomp_plt = os.path.join(d, 'weather_station_data_processing', 'error_analysis',
                               'decomp_barplot', 'var_decomp_stations_tprop.png')
-    station_barplot(decomp, decomp_plt)
+    # station_barplot(decomp, decomp_plt)
 # ========================= EOF ====================================================================
