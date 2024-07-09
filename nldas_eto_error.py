@@ -2,13 +2,11 @@ import json
 import os
 import pytz
 import warnings
-from datetime import timedelta
 
 import numpy as np
 import pandas as pd
 
 from refet import Daily, calcs
-from scipy.stats import skew, kurtosis
 
 warnings.simplefilter(action='ignore', category=FutureWarning)
 
@@ -41,7 +39,7 @@ LIMITS = {'vpd': 3,
 PACIFIC = pytz.timezone('US/Pacific')
 
 
-def residuals(stations, station_data, out_data, error_dist, resids, model='nldas2'):
+def residuals(stations, station_data, gridded_data, station_residuals, all_residuals, model='nldas2'):
     kw = station_par_map('agri')
     station_list = pd.read_csv(stations, index_col=kw['index'])
     if model == 'gridmet':
@@ -62,7 +60,7 @@ def residuals(stations, station_data, out_data, error_dist, resids, model='nldas
             sdf['rn'] = sdf.apply(_rn, lat=row['latitude'], elev=row['elev_m'], zw=row['anemom_height_m'], axis=1)
             sdf = sdf[COMPARISON_VARS]
 
-            grid_file = os.path.join(out_data, '{}.csv'.format(fid))
+            grid_file = os.path.join(gridded_data, '{}.csv'.format(fid))
             gdf = pd.read_csv(grid_file, index_col='date_str', parse_dates=True)
             gdf['mean_temp'] = (gdf['min_temp'] + gdf['max_temp']) * 0.5
             gdf = gdf[COMPARISON_VARS]
@@ -83,7 +81,7 @@ def residuals(stations, station_data, out_data, error_dist, resids, model='nldas
                 eto_residuals = df['eto_station'] - df[f'eto_{model}']
                 res_df[var] = eto_residuals
 
-                sta_res[var] = (list(residuals), list(eto_residuals))
+                sta_res[var] = [list(residuals), list(eto_residuals)]
                 all_res_dict[var] += list(residuals)
 
         except Exception as e:
@@ -91,10 +89,10 @@ def residuals(stations, station_data, out_data, error_dist, resids, model='nldas
 
         errors[fid] = sta_res.copy()
 
-    with open(error_dist, 'w') as dst:
+    with open(station_residuals, 'w') as dst:
         json.dump(errors, dst, indent=4)
 
-    with open(resids, 'w') as dst:
+    with open(all_residuals, 'w') as dst:
         json.dump(all_res_dict, dst, indent=4)
 
 
@@ -169,6 +167,9 @@ def check_file(lat, elev):
                                                                                 index=dri.index)
 
 
+
+
+
 if __name__ == '__main__':
 
     d = '/media/research/IrrigationGIS/milk'
@@ -186,10 +187,11 @@ if __name__ == '__main__':
     grid_data = os.path.join(d, 'weather_station_data_processing', 'gridded', model_)
     res_json = os.path.join(d, 'weather_station_data_processing', 'error_analysis',
                             'all_residuals_{}.json'.format(model_))
-    error_json = os.path.join(d, 'weather_station_data_processing', 'error_analysis',
-                              'station_residuals_{}.json'.format(model_))
+    sta_res = os.path.join(d, 'weather_station_data_processing', 'error_analysis',
+                           'station_residuals_{}.json'.format(model_))
 
-    residuals(station_meta, sta_data, grid_data, error_json, res_json, model=model_)
+    # residuals(station_meta, sta_data, grid_data, sta_res, res_json, model=model_)
+
 
 
 # ========================= EOF ====================================================================

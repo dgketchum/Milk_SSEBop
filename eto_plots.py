@@ -81,6 +81,8 @@ def plot_residual_met_histograms(resids_file, plot_dir):
         plt.gca().text(0.05, 0.95, textstr, transform=plt.gca().transAxes, fontsize=14,
                        verticalalignment='top', bbox=props)
         plt.tight_layout()
+        if not os.path.exists(plot_dir):
+            os.mkdir(plot_dir)
         plot_path = os.path.join(plot_dir, f'{var}_residuals_histogram.png')
         plt.savefig(plot_path)
 
@@ -138,6 +140,8 @@ def plot_eto_var_scatter_histograms(resid_json, plot_dir):
 
     plt.tight_layout(rect=[0, 0.05, 1, 1])
     plot_path = os.path.join(plot_dir, 'eto_vars_scatter_plot.png'.format(var))
+    if not os.path.exists(plot_dir):
+        os.mkdir(plot_dir)
     plt.savefig(plot_path)
     plt.close()
 
@@ -205,7 +209,7 @@ if __name__ == '__main__':
 
     met_residuals = os.path.join(d, 'weather_station_data_processing', 'error_analysis', 'residuals.json')
 
-    model_ = 'gridmet'
+    model_ = 'nldas2'
     residuals = os.path.join(d, 'weather_station_data_processing', 'error_analysis',
                              'station_residuals_{}.json'.format(model_))
 
