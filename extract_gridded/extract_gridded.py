@@ -7,7 +7,7 @@ import pytz
 from pandarallel import pandarallel
 from refet import Daily, calcs, Hourly
 
-from nldas_eto_error import station_par_map
+from eto_error import station_par_map
 from thredds import GridMet
 
 PACIFIC = pytz.timezone('US/Pacific')
@@ -17,6 +17,7 @@ RESAMPLE_MAP = {'rsds': 'sum',
                 'min_temp': 'min',
                 'max_temp': 'max',
                 'wind': 'mean',
+                'ea': 'mean',
                 'rn': 'sum',
                 'vpd': 'mean',
                 'eto': 'sum'}
