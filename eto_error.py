@@ -25,10 +25,11 @@ COMPARISON_VARS = ['vpd', 'rn', 'mean_temp', 'wind', 'eto']
 STR_MAP = {
     'rn': r'Net Radiation [MJ m$^{-2}$ d$^{-1}$]',
     'vpd': r'Vapor Pressure Deficit [kPa]',
-    'tmean': r'Mean Daily Temperature [K]',
-    'u2': r'Wind Speed at 2 m [m s$^{-1}$]',
+    'mean_temp': r'Mean Daily Temperature [C]',
+    'wind': r'Wind Speed at 2 m [m s$^{-1}$]',
     'eto': r'ASCE Grass Reference Evapotranspiration [mm day$^{-1}$]'
 }
+
 
 LIMITS = {'vpd': 3,
           'rs': 0.8,
@@ -39,16 +40,21 @@ LIMITS = {'vpd': 3,
 PACIFIC = pytz.timezone('US/Pacific')
 
 
-def residuals(stations, station_data, gridded_data, station_residuals, all_residuals, model='nldas2'):
+def residuals(stations, station_data, gridded_data, station_residuals, all_residuals, model='nldas2',
+              south=False):
     kw = station_par_map('agri')
     station_list = pd.read_csv(stations, index_col=kw['index'])
+
     if model == 'gridmet':
+        station_list = station_list[station_list['latitude'] <= 49.0]
+
+    if south and model == 'nldas2':
         station_list = station_list[station_list['latitude'] <= 49.0]
 
     errors, all_res_dict = {}, {v: [] for v in COMPARISON_VARS}
     for i, (fid, row) in enumerate(station_list.iterrows()):
-        sta_res = {v: [] for v in COMPARISON_VARS}
         try:
+            sta_res = {v: [] for v in COMPARISON_VARS}
             print('{} of {}: {}'.format(i + 1, station_list.shape[0], fid))
 
             sdf_file = os.path.join(station_data, '{}_output.xlsx'.format(fid))
@@ -84,10 +90,14 @@ def residuals(stations, station_data, gridded_data, station_residuals, all_resid
                 sta_res[var] = [list(residuals), list(eto_residuals)]
                 all_res_dict[var] += list(residuals)
 
+            errors[fid] = sta_res.copy()
+
+            res_df['eto'] = sdf['eto'] - gdf['eto']
+            _file = os.path.join(gridded_data, 'res_{}.csv'.format(fid))
+            res_df.to_csv(_file)
+
         except Exception as e:
             print('Exception raised on {}, {}'.format(fid, e))
-
-        errors[fid] = sta_res.copy()
 
     with open(station_residuals, 'w') as dst:
         json.dump(errors, dst, indent=4)
@@ -167,9 +177,6 @@ def check_file(lat, elev):
                                                                                 index=dri.index)
 
 
-
-
-
 if __name__ == '__main__':
 
     d = '/media/research/IrrigationGIS/milk'
@@ -190,8 +197,6 @@ if __name__ == '__main__':
     sta_res = os.path.join(d, 'weather_station_data_processing', 'error_analysis',
                            'station_residuals_{}.json'.format(model_))
 
-    # residuals(station_meta, sta_data, grid_data, sta_res, res_json, model=model_)
-
-
+    residuals(station_meta, sta_data, grid_data, sta_res, res_json, model=model_)
 
 # ========================= EOF ====================================================================

@@ -12,19 +12,15 @@ from pandarallel import pandarallel
 from refet import Daily
 from scipy.stats import skew, kurtosis
 
-
-from nldas_eto_error import COMPARISON_VARS
-from nldas_eto_error import station_par_map
+from eto_error import COMPARISON_VARS
+from eto_error import station_par_map
 
 warnings.simplefilter(action='ignore', category=FutureWarning)
 
 
-def mc_timeseries_draw(station_residuals, station_meta, gridded, outfile, station_type='ec',
-                       model='nldas2', num_samples=1000):
+def mc_timeseries_draw(station_meta, gridded, outfile, station_type='ec', num_samples=1000,
+                       propogate_temp=False):
     kw = station_par_map(station_type)
-
-    with open(station_residuals, 'r') as f:
-        station_residuals = json.load(f)
 
     results = {}
 
@@ -32,17 +28,13 @@ def mc_timeseries_draw(station_residuals, station_meta, gridded, outfile, statio
 
     for j, (station, row) in enumerate(station_list.iterrows()):
 
-        residuals = {k: v[0] for k, v in station_residuals[station].items() if v}
-
-        if not residuals:
-            continue
-
         print('\n{} of {}: {}'.format(j + 1, station_list.shape[0], station))
 
-        file_ = os.path.join(gridded, model, '{}.csv'.format(station))
+        file_ = os.path.join(gridded, '{}.csv'.format(station))
 
-        gdf = pd.read_csv(file_, parse_dates=True, index_col='date')
-        gdf.index = pd.DatetimeIndex([i.strftime('%Y-%m-%d') for i in gdf.index])
+        gdf = pd.read_csv(file_, parse_dates=True, index_col='date_str')
+        gdf['doy'] = [i.dayofyear for i in gdf.index]
+        gdf['mean_temp'] = (gdf['min_temp'] + gdf['max_temp']) / 2
 
         def calc_eto(r, mod_var, mod_vals):
             # modify the error-perturbed values with setattr
@@ -51,21 +43,21 @@ def mc_timeseries_draw(station_residuals, station_meta, gridded, outfile, statio
                 tmax=r['max_temp'],
                 ea=r['ea'],
                 rs=r['rsds'] * 0.0864,
-                uz=r['u2'],
-                zw=2.0,
+                uz=r['wind'],
+                zw=10.0,
                 doy=r['doy'],
                 elev=row[kw['elev']],
                 lat=row[kw['lat']])
 
-            if mod_var == 'tmean':
+            if mod_var == 'mean_temp' and propogate_temp:
                 err = mod_vals - ((r['min_temp'] + r['max_temp']) / 2)
                 asce = Daily(
                     tmin=r['min_temp'] + err,
                     tmax=r['max_temp'] + err,
                     ea=r['ea'],
                     rs=r['rsds'] * 0.0864,
-                    uz=r['u2'],
-                    zw=2.0,
+                    uz=r['wind'],
+                    zw=10.0,
                     doy=r['doy'],
                     elev=row[kw['elev']],
                     lat=row[kw['lat']])
@@ -75,7 +67,11 @@ def mc_timeseries_draw(station_residuals, station_meta, gridded, outfile, statio
             _eto = asce.eto()[0]
 
             return _eto
-        HERE
+
+        resid_file = os.path.join(gridded, 'res_{}.csv'.format(station))
+        if not os.path.isfile(resid_file):
+            continue
+
         res_df = pd.read_csv(resid_file, parse_dates=True, index_col='date')
         res_df.index = [datetime.date(i.year, i.month, i.day) for i in res_df.index]
         res_df.dropna(how='any', axis=0, inplace=True)
@@ -189,15 +185,21 @@ if __name__ == '__main__':
     sta_res = os.path.join(d, 'weather_station_data_processing', 'error_analysis',
                            'station_residuals_{}.json'.format(model_))
 
-    pandarallel.initialize(nb_workers=4)
+    pandarallel.initialize(nb_workers=10)
 
-    num_sampl_ = 10
+    num_sampl_ = 100
     variance_json = os.path.join(d, 'weather_station_data_processing', 'error_analysis',
                                  'eto_variance_{}_tprop.json'.format(num_sampl_))
-    mc_timeseries_draw(sta_res, sta, grid_data, variance_json, station_type='agri', model=model_,
-                       num_samples=num_sampl_)
+    mc_timeseries_draw(sta, grid_data, variance_json, station_type='agri', num_samples=num_sampl_,
+                       propogate_temp=True)
 
-    decomp = os.path.join(d, 'weather_station_data_processing', 'error_analysis', 'var_decomp_stations_tprop.csv')
-    variance_decomposition(variance_json, sta, decomp, station_type='agri')
+    num_sampl_ = 100
+    variance_json = os.path.join(d, 'weather_station_data_processing', 'error_analysis',
+                                 'eto_variance_{}_notprop.json'.format(num_sampl_))
+    mc_timeseries_draw(sta, grid_data, variance_json, station_type='agri', num_samples=num_sampl_,
+                       propogate_temp=False)
+
+    # decomp = os.path.join(d, 'weather_station_data_processing', 'error_analysis', 'var_decomp_stations_notprop.csv')
+    # variance_decomposition(variance_json, sta, decomp, station_type='agri')
 
 # ========================= EOF ====================================================================
