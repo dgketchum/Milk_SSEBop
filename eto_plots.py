@@ -1,21 +1,24 @@
-import json
-import os
-
 import matplotlib.pyplot as plt
-import numpy as np
 import pandas as pd
 import seaborn as sns
-from scipy.stats import skew, kurtosis
 from scipy.stats import linregress
 
-from nldas_eto_error import LIMITS
+from eto_error import LIMITS, STR_MAP
 
 STR_MAP_SIMPLE = {
-    'rn': r'Rn',
     'vpd': r'VPD',
+    'rn': r'Rn',
     'mean_temp': r'Mean Temp',
     'wind': r'Wind Speed',
     'eto': r'ETo'
+}
+
+UNITS_MAP = {
+    'rn': r'[MJ m$^{-2}$ d$^{-1}$]',
+    'vpd': r'[kPa]',
+    'mean_temp': r'[C]',
+    'wind': r'[m s$^{-1}$]',
+    'eto': r'[mm day$^{-1}$]'
 }
 
 large = 22
@@ -41,9 +44,113 @@ plt.rcParams.update(params)
 sns.set_style('white', {'axes.linewidth': 0.5})
 
 LIMITS = {'vpd': 3,
-          'rn': 10,
-          'wind': 12,
-          'mean_temp': 15}
+          'rn': 7,
+          'wind': 7,
+          'mean_temp': 10}
+
+from scipy.stats import skew, kurtosis
+
+import matplotlib.pyplot as plt
+import seaborn as sns
+import numpy as np
+import json
+import os
+from scipy import stats
+
+
+def plot_residuals_comparison_histograms(resids_file1, resids_file2, plot_dir):
+    try:
+        with open(resids_file1, 'r') as f1, open(resids_file2, 'r') as f2:
+            res_dct1 = json.load(f1)
+            res_dct2 = json.load(f2)
+
+        all_vars = set(res_dct1.keys()) | set(res_dct2.keys())
+        num_vars = len(all_vars)
+        num_rows = int(np.ceil(num_vars / 3))
+
+        fig, axes = plt.subplots(num_rows, 3, figsize=(18, 6 * num_rows))
+        if num_vars % 3 != 0:
+            for i in range(num_vars % 3, 3):
+                fig.delaxes(axes[-1, i])
+
+        first = True
+        for i, var in enumerate(STR_MAP_SIMPLE.keys()):
+            row = i // 3
+            col = i % 3
+            ax = axes[row, col]
+
+            residuals1 = res_dct1.get(var, [])
+            residuals2 = res_dct2.get(var, [])
+
+            units = UNITS_MAP[var]
+
+            try:
+                sns.histplot(residuals1, kde=True, stat='density', color='blue', label=f'{STR_MAP_SIMPLE[var]} NLDAS2',
+                             ax=ax)
+                sns.histplot(residuals2, kde=True, stat='density', color='orange',
+                             label=f'{STR_MAP_SIMPLE[var]} GridMET', ax=ax)
+
+                ax.axvline(np.mean(residuals1), color='blue', linestyle='dashed', linewidth=1)
+                ax.axvline(np.mean(residuals2), color='orange', linestyle='dashed', linewidth=1)
+
+                if col == 0 and row == 0:
+                    ax.set_xlabel(f'{STR_MAP[var]}\n(Observed minus NLDAS)')
+                else:
+                    ax.set_xlabel(f'{STR_MAP[var]}')
+
+                bbox = [0.02, 0.75, 0.4, 0.2]
+                cell_text = create_table_text(residuals1, residuals2, first=first)
+                table_obj = ax.table(cellText=cell_text, bbox=bbox, colWidths=[1, 2, 2], edges='horizontal')
+                first = False
+
+                ax.set_ylabel('Frequency' if col == 0 else '')
+                ax.axvline(0, color='black', linestyle='solid', linewidth=0.7)
+
+                if var in LIMITS:
+                    ax.set_xlim([-1 * LIMITS[var], LIMITS[var]])
+
+            except (ZeroDivisionError, ValueError, OverflowError) as e:
+                print(f"Error processing variable '{var}': {e}")
+
+        axes[-1, -1].axis('off')
+        axes[-1, -1].legend(*ax.get_legend_handles_labels(), loc='center')
+
+        plt.tight_layout()
+        if not os.path.exists(plot_dir):
+            os.mkdir(plot_dir)
+        plot_path = os.path.join(plot_dir, 'all_residuals_comparison_histogram.png')
+        plt.savefig(plot_path)
+
+    except (FileNotFoundError, json.JSONDecodeError) as e:
+        print(f"Error reading or parsing files: {e}")
+
+
+def create_table_text(residuals1, residuals2, first):
+    labels = ['', 'NLDAS-2', 'GridMET']
+    if first:
+        stats = ['n', 'μ', 'σ²', 'γ₁', 'γ₂']
+        data = [[label] + [create_textstr_value(res, stat) for res in [residuals1, residuals2]] for label, stat in
+                zip(stats, ['n', 'mean', 'var', 'skew', 'kurtosis'])]
+    else:
+        stats = ['μ', 'σ²', 'γ₁', 'γ₂']
+        data = [[label] + [create_textstr_value(res, stat) for res in [residuals1, residuals2]] for label, stat in
+                zip(stats, ['mean', 'var', 'skew', 'kurtosis'])]
+
+    return [labels] + data
+
+
+def create_textstr_value(residuals, stat_func):
+    if residuals:
+        if stat_func == 'n':
+            return '{:,}'.format(len(residuals))
+        else:
+            try:
+                func = getattr(np, stat_func)
+            except AttributeError:
+                func = getattr(stats, stat_func)
+            return '{:.2f}'.format(func(residuals).item())
+    else:
+        return 'No Data'
 
 
 def plot_residual_met_histograms(resids_file, plot_dir):
@@ -64,7 +171,7 @@ def plot_residual_met_histograms(resids_file, plot_dir):
         kde_line.set_color('red')
 
         plt.axvline(mean_, color='black', linestyle='dashed', linewidth=1)
-        plt.xlabel(f'{STR_MAP[var]} Residuals\n(Observed minus NLDAS)')
+        plt.xlabel(f'{STR_MAP_SIMPLE[var]} Residuals\n(Observed minus NLDAS)')
         plt.ylabel('Frequency')
         plt.grid(True)
 
@@ -98,8 +205,8 @@ def plot_eto_var_scatter_histograms(resid_json, plot_dir):
 
     dct = {k: v for k, v in dct.items() if len(v['eto']) > 0}
 
+    first = True
     for i, var in enumerate(vars):
-
         data = [v[var] for k, v in dct.items()]
 
         target = [d[0] for d in data]
@@ -124,12 +231,21 @@ def plot_eto_var_scatter_histograms(resid_json, plot_dir):
         slope, intercept, r_value, p_value, std_err = linregress(eto, target)
         r_squared = r_value ** 2
 
-        textstr = '\n'.join((
-            r'$n={:,}$'.format(target.shape[0]),
-            r'$r^2$: {:.2f}'.format(r_squared)))
-        props = dict(boxstyle='round', facecolor='white')
-        ax_main.text(0.05, 0.95, textstr, transform=ax_main.transAxes, fontsize=14,
-                     verticalalignment='top', bbox=props)
+        if first:
+            textstr = '\n'.join((
+                r'$n={:,}$'.format(eto.shape[0]),
+                r'$r^2$: {:.2f}'.format(r_squared)))
+            props = dict(boxstyle='round', facecolor='white')
+            ax_main.text(0.05, 0.95, textstr, transform=ax_main.transAxes, fontsize=14,
+                         verticalalignment='top', bbox=props)
+
+            first = False
+
+        else:
+            textstr = r'$r^2$: {:.2f}'.format(r_squared)
+            props = dict(boxstyle='round', facecolor='white')
+            ax_main.text(0.05, 0.95, textstr, transform=ax_main.transAxes, fontsize=14,
+                         verticalalignment='top', bbox=props)
 
         ax_main.set_xlim(-6, 6)
         ax_main.set_ylim(-1 * LIMITS[var], LIMITS[var])
@@ -207,23 +323,29 @@ if __name__ == '__main__':
         home = os.path.expanduser('~')
         d = os.path.join(home, 'data', 'IrrigationGIS', 'milk')
 
-    met_residuals = os.path.join(d, 'weather_station_data_processing', 'error_analysis', 'residuals.json')
+    res_json = os.path.join(d, 'weather_station_data_processing', 'error_analysis',
+                            'all_residuals_nldas2_south.json')
+    res_json2 = os.path.join(d, 'weather_station_data_processing', 'error_analysis',
+                             'all_residuals_gridmet.json')
+    hist = os.path.join(d, 'weather_station_data_processing', 'error_analysis', 'joined_resid_hist')
+    # plot_residuals_comparison_histograms(res_json, res_json2, hist)
 
     model_ = 'nldas2'
+    res_json = os.path.join(d, 'weather_station_data_processing', 'error_analysis',
+                            'all_residuals_{}.json'.format(model_))
+    hist = os.path.join(d, 'weather_station_data_processing', 'error_analysis', 'joined_resid_hist')
+    # plot_residual_met_histograms(res_json, hist)
+
     residuals = os.path.join(d, 'weather_station_data_processing', 'error_analysis',
                              'station_residuals_{}.json'.format(model_))
-
-    hist = os.path.join(d, 'weather_station_data_processing', 'error_analysis', 'joined_resid_hist')
-    # plot_residual_met_histograms(met_residuals, hist)
-
     scatter = os.path.join(d, 'weather_station_data_processing', 'error_analysis', 'joined_resid_scatter', model_)
-    plot_eto_var_scatter_histograms(residuals, scatter)
+    # plot_eto_var_scatter_histograms(residuals, scatter)
 
     heat = os.path.join(d, 'weather_station_data_processing', 'error_analysis', 'heatmap')
     # plot_resid_corr_heatmap(joined_resid, heat)
 
     decomp = os.path.join(d, 'weather_station_data_processing', 'error_analysis', 'var_decomp_stations_tprop.csv')
     decomp_plt = os.path.join(d, 'weather_station_data_processing', 'error_analysis',
-                              'decomp_barplot', 'var_decomp_stations_tprop.png')
+                              'decomp_barplot', 'var_decomp_stations_notprop.png')
     # station_barplot(decomp, decomp_plt)
 # ========================= EOF ====================================================================
