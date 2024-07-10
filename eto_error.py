@@ -2,10 +2,10 @@ import json
 import os
 import pytz
 import warnings
+from calendar import month_abbr
 
 import numpy as np
 import pandas as pd
-
 from refet import Daily, calcs
 
 warnings.simplefilter(action='ignore', category=FutureWarning)
@@ -41,7 +41,7 @@ PACIFIC = pytz.timezone('US/Pacific')
 
 
 def residuals(stations, station_data, gridded_data, station_residuals, all_residuals, model='nldas2',
-              location=None):
+              location=None, monthly=False):
     kw = station_par_map('agri')
     station_list = pd.read_csv(stations, index_col=kw['index'])
 
@@ -57,8 +57,14 @@ def residuals(stations, station_data, gridded_data, station_residuals, all_resid
     errors, all_res_dict = {}, {v: [] for v in COMPARISON_VARS}
 
     for i, (fid, row) in enumerate(station_list.iterrows()):
+
         try:
-            sta_res = {v: [] for v in COMPARISON_VARS}
+
+            if monthly:
+                sta_res = {v: {month: [] for month in month_abbr[1:]} for v in COMPARISON_VARS}
+            else:
+                sta_res = {v: [] for v in COMPARISON_VARS}
+
             print('{} of {}: {}'.format(i + 1, station_list.shape[0], fid))
 
             sdf_file = os.path.join(station_data, '{}_output.xlsx'.format(fid))
@@ -84,24 +90,43 @@ def residuals(stations, station_data, gridded_data, station_residuals, all_resid
                 df.dropna(how='any', axis=0, inplace=True)
 
                 df[n_var] = gdf.loc[df.index, var].values
-                residuals = df[s_var] - df[n_var]
-                res_df[var] = residuals
 
-                df[f'eto_{model}'] = gdf.loc[df.index, 'eto'].values
-                eto_residuals = df['eto_station'] - df[f'eto_{model}']
-                res_df[var] = eto_residuals
+                if monthly:
+                    # only for station-based residuals, is ignoring writing residual csv
+                    df['month'] = df.index.month
+                    for month in df['month'].unique():
 
-                sta_res[var] = [list(residuals), list(eto_residuals)]
-                all_res_dict[var] += list(residuals)
+                        res = df.loc[df['month'] == month, s_var] - df.loc[df['month'] == month, n_var]
+                        sta_res[var][month] = res.tolist()
+                        all_res_dict[var].extend(res.tolist())
+
+                else:
+                    residuals = df[s_var] - df[n_var]
+                    res_df[var] = residuals
+
+                    df[f'eto_{model}'] = gdf.loc[df.index, 'eto'].values
+                    eto_residuals = df['eto_station'] - df[f'eto_{model}']
+                    res_df[var] = eto_residuals
+
+                    sta_res[var] = [list(residuals), list(eto_residuals)]
+                    all_res_dict[var] += list(residuals)
+
+                    res_df['eto'] = sdf['eto'] - gdf['eto']
+                    _file = os.path.join(gridded_data, 'res_{}.csv'.format(fid))
+                    res_df.to_csv(_file)
 
             errors[fid] = sta_res.copy()
 
-            res_df['eto'] = sdf['eto'] - gdf['eto']
-            _file = os.path.join(gridded_data, 'res_{}.csv'.format(fid))
-            res_df.to_csv(_file)
-
         except Exception as e:
             print('Exception raised on {}, {}'.format(fid, e))
+
+    if monthly:
+        station_residuals.replace('.json', '_month.json')
+        all_residuals.replace('.json', '_month.json')
+
+    if location:
+        station_residuals.replace('.json', '_{}.json'.format(location))
+        all_residuals.replace('.json', '_{}.json'.format(location))
 
     with open(station_residuals, 'w') as dst:
         json.dump(errors, dst, indent=4)
@@ -201,6 +226,6 @@ if __name__ == '__main__':
     sta_res = os.path.join(d, 'weather_station_data_processing', 'error_analysis',
                            'station_residuals_{}.json'.format(model_))
 
-    residuals(station_meta, sta_data, grid_data, sta_res, res_json, model=model_)
+    residuals(station_meta, sta_data, grid_data, sta_res, res_json, model=model_, monthly=True)
 
 # ========================= EOF ====================================================================
