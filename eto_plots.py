@@ -1,7 +1,14 @@
+import json
+import os
+
+import matplotlib.patches as mpatches
 import matplotlib.pyplot as plt
+import numpy as np
 import pandas as pd
 import seaborn as sns
+from scipy import stats
 from scipy.stats import linregress
+from scipy.stats import skew, kurtosis
 
 from eto_error import LIMITS, STR_MAP
 
@@ -43,22 +50,13 @@ params = {'axes.titlesize': large,
 plt.rcParams.update(params)
 sns.set_style('white', {'axes.linewidth': 0.5})
 
-LIMITS = {'vpd': 3,
+LIMITS = {'vpd': 2.5,
           'rn': 7,
-          'wind': 7,
-          'mean_temp': 10}
-
-from scipy.stats import skew, kurtosis
-
-import matplotlib.pyplot as plt
-import seaborn as sns
-import numpy as np
-import json
-import os
-from scipy import stats
+          'wind': 9,
+          'mean_temp': 12}
 
 
-def plot_residuals_comparison_histograms(resids_file1, resids_file2, plot_dir):
+def plot_residuals_comparison_histograms(resids_file1, resids_file2, plot_dir, desc_1='NLDAS-2', desc_2='GridMET'):
     try:
         with open(resids_file1, 'r') as f1, open(resids_file2, 'r') as f2:
             res_dct1 = json.load(f1)
@@ -69,9 +67,15 @@ def plot_residuals_comparison_histograms(resids_file1, resids_file2, plot_dir):
         num_rows = int(np.ceil(num_vars / 3))
 
         fig, axes = plt.subplots(num_rows, 3, figsize=(18, 6 * num_rows))
+
+        fig.delaxes(axes[1, 0])
+        fig.delaxes(axes[1, 2])
+
         if num_vars % 3 != 0:
             for i in range(num_vars % 3, 3):
                 fig.delaxes(axes[-1, i])
+
+        palette = sns.color_palette('rocket', 2)
 
         first = True
         for i, var in enumerate(STR_MAP_SIMPLE.keys()):
@@ -82,29 +86,33 @@ def plot_residuals_comparison_histograms(resids_file1, resids_file2, plot_dir):
             residuals1 = res_dct1.get(var, [])
             residuals2 = res_dct2.get(var, [])
 
-            units = UNITS_MAP[var]
-
             try:
-                sns.histplot(residuals1, kde=True, stat='density', color='blue', label=f'{STR_MAP_SIMPLE[var]} NLDAS2',
+                sns.histplot(residuals1, kde=True, stat='density', color=palette[0],
+                             label=f'{STR_MAP_SIMPLE[var]} {desc_1}',
                              ax=ax)
-                sns.histplot(residuals2, kde=True, stat='density', color='orange',
-                             label=f'{STR_MAP_SIMPLE[var]} GridMET', ax=ax)
+                sns.histplot(residuals2, kde=True, stat='density', color=palette[1],
+                             label=f'{STR_MAP_SIMPLE[var]} {desc_2}', ax=ax)
 
                 ax.axvline(np.mean(residuals1), color='blue', linestyle='dashed', linewidth=1)
                 ax.axvline(np.mean(residuals2), color='orange', linestyle='dashed', linewidth=1)
 
                 if col == 0 and row == 0:
-                    ax.set_xlabel(f'{STR_MAP[var]}\n(Observed minus NLDAS)')
+                    ax.set_xlabel(f'{STR_MAP[var]}\n(Observed minus Gridded)')
                 else:
                     ax.set_xlabel(f'{STR_MAP[var]}')
 
                 bbox = [0.02, 0.75, 0.4, 0.2]
-                cell_text = create_table_text(residuals1, residuals2, first=first)
+                cell_text = create_table_text(residuals1, residuals2, first, desc_1, desc_2)
                 table_obj = ax.table(cellText=cell_text, bbox=bbox, colWidths=[1, 2, 2], edges='horizontal')
-                first = False
 
                 ax.set_ylabel('Frequency' if col == 0 else '')
                 ax.axvline(0, color='black', linestyle='solid', linewidth=0.7)
+
+                if first:
+                    patch1 = mpatches.Patch(color=palette[0], label=desc_1)
+                    patch2 = mpatches.Patch(color=palette[1], label=desc_2)
+                    ax.legend(handles=[patch1, patch2], loc='upper right')
+                    first = False
 
                 if var in LIMITS:
                     ax.set_xlim([-1 * LIMITS[var], LIMITS[var]])
@@ -112,21 +120,20 @@ def plot_residuals_comparison_histograms(resids_file1, resids_file2, plot_dir):
             except (ZeroDivisionError, ValueError, OverflowError) as e:
                 print(f"Error processing variable '{var}': {e}")
 
-        axes[-1, -1].axis('off')
-        axes[-1, -1].legend(*ax.get_legend_handles_labels(), loc='center')
 
         plt.tight_layout()
+
         if not os.path.exists(plot_dir):
             os.mkdir(plot_dir)
-        plot_path = os.path.join(plot_dir, 'all_residuals_comparison_histogram.png')
+        plot_path = os.path.join(plot_dir, f'{desc_1}_{desc_2}_histogram.png')
         plt.savefig(plot_path)
 
     except (FileNotFoundError, json.JSONDecodeError) as e:
         print(f"Error reading or parsing files: {e}")
 
 
-def create_table_text(residuals1, residuals2, first):
-    labels = ['', 'NLDAS-2', 'GridMET']
+def create_table_text(residuals1, residuals2, first, desc_1, desc_2):
+    labels = ['', f'{desc_1}', f'{desc_2}']
     if first:
         stats = ['n', 'μ', 'σ²', 'γ₁', 'γ₂']
         data = [[label] + [create_textstr_value(res, stat) for res in [residuals1, residuals2]] for label, stat in
@@ -323,12 +330,21 @@ if __name__ == '__main__':
         home = os.path.expanduser('~')
         d = os.path.join(home, 'data', 'IrrigationGIS', 'milk')
 
+    # GridMET - NLDAS-2 comparison ==============
     res_json = os.path.join(d, 'weather_station_data_processing', 'error_analysis',
                             'all_residuals_nldas2_south.json')
     res_json2 = os.path.join(d, 'weather_station_data_processing', 'error_analysis',
                              'all_residuals_gridmet.json')
     hist = os.path.join(d, 'weather_station_data_processing', 'error_analysis', 'joined_resid_hist')
-    # plot_residuals_comparison_histograms(res_json, res_json2, hist)
+    plot_residuals_comparison_histograms(res_json, res_json2, hist, desc_1='NLDAS-2', desc_2='GridMET')
+
+    # NDLAS-2 USA - CAN comparison ==============
+    res_json = os.path.join(d, 'weather_station_data_processing', 'error_analysis',
+                            'all_residuals_nldas2_south.json')
+    res_json2 = os.path.join(d, 'weather_station_data_processing', 'error_analysis',
+                             'all_residuals_nldas2_north.json')
+    hist = os.path.join(d, 'weather_station_data_processing', 'error_analysis', 'joined_resid_hist')
+    plot_residuals_comparison_histograms(res_json, res_json2, hist, desc_1='United States', desc_2='Canada')
 
     model_ = 'nldas2'
     res_json = os.path.join(d, 'weather_station_data_processing', 'error_analysis',

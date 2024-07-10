@@ -8,7 +8,7 @@ import pytz
 from pandarallel import pandarallel
 from refet import Daily
 
-from nldas_eto_error import station_par_map, RENAME_MAP
+from eto_error import station_par_map, RENAME_MAP
 
 warnings.simplefilter(action='ignore', category=FutureWarning)
 
@@ -49,7 +49,7 @@ def ec_comparison(stations, station_data, ssebop_dir, out_file):
             asce = Daily(tmin=r['t_avg'],
                          tmax=r['t_avg'],
                          tdew=r['t_dew'],
-                         rs=r['rso'] * 0.0036,
+                         rs=r['rso'] * 0.0864,
                          uz=r['ws'],
                          zw=zw,
                          doy=r['doy'],
@@ -58,6 +58,8 @@ def ec_comparison(stations, station_data, ssebop_dir, out_file):
 
             if 'vpd' in r.keys():
                 asce.vpd = r['vpd']
+            if 'rn' in r.keys():
+                asce.rn = r['rn']
 
             eto = asce.eto()[0]
 
@@ -113,7 +115,6 @@ def ec_comparison(stations, station_data, ssebop_dir, out_file):
 
     with open(out_file, 'w') as f:
         json.dump(results_dict, f, indent=4)
-    print(f"Data and statistics saved to {out_file}")
 
 
 if __name__ == '__main__':
