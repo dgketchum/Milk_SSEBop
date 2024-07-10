@@ -41,17 +41,21 @@ PACIFIC = pytz.timezone('US/Pacific')
 
 
 def residuals(stations, station_data, gridded_data, station_residuals, all_residuals, model='nldas2',
-              south=False):
+              location=None):
     kw = station_par_map('agri')
     station_list = pd.read_csv(stations, index_col=kw['index'])
 
     if model == 'gridmet':
         station_list = station_list[station_list['latitude'] <= 49.0]
 
-    if south and model == 'nldas2':
+    if location == 'south' and model == 'nldas2':
         station_list = station_list[station_list['latitude'] <= 49.0]
 
+    elif location == 'north' and model == 'nldas2':
+        station_list = station_list[station_list['latitude'] >= 49.0]
+
     errors, all_res_dict = {}, {v: [] for v in COMPARISON_VARS}
+
     for i, (fid, row) in enumerate(station_list.iterrows()):
         try:
             sta_res = {v: [] for v in COMPARISON_VARS}

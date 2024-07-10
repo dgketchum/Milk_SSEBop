@@ -199,7 +199,7 @@ if __name__ == '__main__':
     mc_timeseries_draw(sta, grid_data, variance_json, station_type='agri', num_samples=num_sampl_,
                        propogate_temp=False)
 
-    # decomp = os.path.join(d, 'weather_station_data_processing', 'error_analysis', 'var_decomp_stations_notprop.csv')
-    # variance_decomposition(variance_json, sta, decomp, station_type='agri')
+    decomp = os.path.join(d, 'weather_station_data_processing', 'error_analysis', 'var_decomp_stations_notprop.csv')
+    variance_decomposition(variance_json, sta, decomp, station_type='agri')
 
 # ========================= EOF ====================================================================
