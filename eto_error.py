@@ -41,7 +41,7 @@ PACIFIC = pytz.timezone('US/Pacific')
 
 
 def residuals(stations, station_data, gridded_data, station_residuals, all_residuals, model='nldas2',
-              location=None, monthly=False):
+              location=None, monthly=False, annual=False):
     kw = station_par_map('agri')
     station_list = pd.read_csv(stations, index_col=kw['index'])
 
@@ -61,7 +61,7 @@ def residuals(stations, station_data, gridded_data, station_residuals, all_resid
         try:
 
             if monthly:
-                sta_res = {v: {month: [] for month in month_abbr[1:]} for v in COMPARISON_VARS}
+                sta_res = {v: {month: [] for month in range(1, 13)} for v in COMPARISON_VARS}
             else:
                 sta_res = {v: [] for v in COMPARISON_VARS}
 
@@ -91,9 +91,20 @@ def residuals(stations, station_data, gridded_data, station_residuals, all_resid
 
                 df[n_var] = gdf.loc[df.index, var].values
 
-                if monthly:
+                if annual:
                     # only for station-based residuals, is ignoring writing residual csv
-                    df['month'] = df.index.month
+                    df['year'] = [int(i) for i in df.index.year]
+                    df['count'] = [1 for _ in range(df.shape[0])]
+                    res = df[[s_var, n_var, 'year', 'count']].groupby('year').sum()
+                    res = res[res['count'] > 300]
+                    res[f'{var}_residual'] = (res[s_var] - res[n_var]) / res['count']
+
+                    sta_res[var] = res[f'{var}_residual'].tolist()
+                    all_res_dict[var] += res[f'{var}_residual'].tolist()
+
+                elif monthly:
+                    # only for station-based residuals, is ignoring writing residual csv
+                    df['month'] = [int(m) for m in df.index.month]
                     for month in df['month'].unique():
 
                         res = df.loc[df['month'] == month, s_var] - df.loc[df['month'] == month, n_var]
@@ -120,13 +131,17 @@ def residuals(stations, station_data, gridded_data, station_residuals, all_resid
         except Exception as e:
             print('Exception raised on {}, {}'.format(fid, e))
 
+    if annual:
+        station_residuals = station_residuals.replace('.json', '_annual.json')
+        all_residuals = all_residuals.replace('.json', '_annual.json')
+
     if monthly:
-        station_residuals.replace('.json', '_month.json')
-        all_residuals.replace('.json', '_month.json')
+        station_residuals = station_residuals.replace('.json', '_month.json')
+        all_residuals = all_residuals.replace('.json', '_month.json')
 
     if location:
-        station_residuals.replace('.json', '_{}.json'.format(location))
-        all_residuals.replace('.json', '_{}.json'.format(location))
+        station_residuals = station_residuals.replace('.json', '_{}.json'.format(location))
+        all_residuals = all_residuals.replace('.json', '_{}.json'.format(location))
 
     with open(station_residuals, 'w') as dst:
         json.dump(errors, dst, indent=4)
@@ -226,6 +241,7 @@ if __name__ == '__main__':
     sta_res = os.path.join(d, 'weather_station_data_processing', 'error_analysis',
                            'station_residuals_{}.json'.format(model_))
 
-    residuals(station_meta, sta_data, grid_data, sta_res, res_json, model=model_, monthly=True)
+    residuals(station_meta, sta_data, grid_data, sta_res, res_json, model=model_, monthly=True, annual=False,
+              location=None)
 
 # ========================= EOF ====================================================================

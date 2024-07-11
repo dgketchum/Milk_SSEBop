@@ -1,5 +1,6 @@
 import json
 import os
+from calendar import month_abbr
 
 import matplotlib.patches as mpatches
 import matplotlib.pyplot as plt
@@ -119,7 +120,6 @@ def plot_residuals_comparison_histograms(resids_file1, resids_file2, plot_dir, d
 
             except (ZeroDivisionError, ValueError, OverflowError) as e:
                 print(f"Error processing variable '{var}': {e}")
-
 
         plt.tight_layout()
 
@@ -270,8 +270,12 @@ def plot_eto_var_scatter_histograms(resid_json, plot_dir):
 
 
 def plot_resid_corr_heatmap(joined_resid_csv, plot_dir):
-    df = pd.read_csv(joined_resid_csv, index_col=0)
+    with open(joined_resid_csv, 'r') as f:
+        dct = json.load(f)
+
+    df = pd.DataFrame.from_dict(dct, orient='columns')
     df = df.rename(columns=STR_MAP_SIMPLE)
+    df = df[['ETo', 'Rn', 'Mean Temp', 'VPD', 'Wind Speed']]
     corr_matrix = df.corr()
 
     mask = np.zeros_like(corr_matrix)
@@ -323,6 +327,117 @@ def station_barplot(csv, out_file):
     plt.savefig(out_file)
 
 
+def plot_monthly_residuals_by_station(station_residuals_file, out_fig, variable_name='eto'):
+    with open(station_residuals_file, 'r') as f:
+        data = json.load(f)
+
+    for station_id, station_data in data.items():
+        residuals_data = []
+        for month, res in station_data.get(variable_name, {}).items():
+            if res:
+                residuals_data.extend([(month, r) for r in res])
+
+        if residuals_data:
+            df = pd.DataFrame(residuals_data, columns=['Month', 'Residual'])
+            plt.figure(figsize=(10, 6))
+
+            sns.boxplot(x='Month', y='Residual', data=df, showmeans=True, meanprops={"marker": "o",
+                                                                                     "markerfacecolor": "white",
+                                                                                     "markeredgecolor": "black",
+                                                                                     "markersize": "10"})
+
+            plt.axhline(0, color='red', linestyle='-', linewidth=1)
+
+            plt.ylim(-6, 6)
+            plt.ylabel(f"{STR_MAP_SIMPLE[variable_name]} Residual", fontsize=12)
+
+            plt.tight_layout()
+            plt.savefig(os.path.join(out_fig, '{}.png'.format(station_id)))
+            plt.close()
+
+
+def plot_monthly_residuals(station_residuals_file, variable_name, output_dir):
+    with open(station_residuals_file, 'r') as f:
+        data = json.load(f)
+
+    all_data = []
+    for station_id, station_data in data.items():
+        for month, res in station_data.get(variable_name, {}).items():
+            if res:
+                mean_val = np.mean(res)
+                q25 = np.percentile(res, 25)
+                q75 = np.percentile(res, 75)
+                all_data.append({'Station': station_id, 'Month': month, 'Mean': mean_val, '25th': q25, '75th': q75})
+
+    df = pd.DataFrame(all_data)
+
+    # growing season stats:
+    idx = [i for i, r in df.iterrows() if r['Month'] in [str(m) for m in range(4, 11)]]
+    gsdf = df.loc[idx].copy()
+    gsdf = gsdf[['Station', 'Mean']].groupby('Station').mean()
+
+    plt.figure(figsize=(15, 6))
+    ax = plt.gca()
+    # ax.set_xlim([-0.5, 11.5])
+    ax.set_xticks(range(12))
+    ax.set_xticklabels(month_abbr[1:])
+
+    num_stations = df['Station'].nunique()
+    x_offset = 1.0 / num_stations
+    start_offset = -0.8 + (0.8 / num_stations) / 2
+
+    for m in range(1, 13):
+        vals = df[df['Month'] == str(m)]['Mean'].values
+        pos = np.count_nonzero(vals >= 0)
+        neg = np.count_nonzero(vals < 0)
+        print('Month {}: {} positive bias, {} negative bias: {:.2f} positive'.format(m, pos, neg, pos / (pos + neg)))
+
+    for station in df['Station'].unique():
+        station_df = df[df['Station'] == station]
+
+        ax.errorbar(
+            station_df['Month'].astype(int) - 0.5 + start_offset,
+            station_df['Mean'],
+            yerr=[station_df['Mean'] - station_df['25th'], station_df['75th'] - station_df['Mean']],
+            fmt='none',
+            elinewidth=1,
+            ecolor='black',
+            capsize=0
+        )
+
+        ax.plot(
+            station_df['Month'].astype(int) - 0.5 + start_offset,
+            station_df['Mean'],
+            marker='o', linestyle='none', markersize=2, color='black',
+            label=station if start_offset == 0 else ''  # Only label first point for each station
+        )
+
+        start_offset += x_offset
+
+    plt.axhline(0, color='red', linestyle='-', linewidth=1)
+    plt.ylabel(f"{variable_name} Residual", fontsize=12)
+    plt.xlabel("Month", fontsize=12)
+    # plt.legend(title='Station', bbox_to_anchor=(1.05, 1), loc='upper left')
+
+    plt.tight_layout()
+    plt.savefig(os.path.join(output_dir, f'{variable_name}_all_stations_residuals_boxplot.png'))
+    plt.show()
+
+
+def annual_residuals(station_residuals_file, variable_name, output_dir):
+    with open(station_residuals_file, 'r') as f:
+        data = json.load(f)
+
+    all_data = []
+    for station_id, station_data in data.items():
+        res = station_data['eto']
+        mean_val = np.mean(res)
+        all_data.append({'Station': station_id, 'Mean': mean_val})
+
+    df = pd.DataFrame(all_data)
+    pass
+
+
 if __name__ == '__main__':
 
     d = '/media/research/IrrigationGIS/milk'
@@ -336,7 +451,7 @@ if __name__ == '__main__':
     res_json2 = os.path.join(d, 'weather_station_data_processing', 'error_analysis',
                              'all_residuals_gridmet.json')
     hist = os.path.join(d, 'weather_station_data_processing', 'error_analysis', 'joined_resid_hist')
-    plot_residuals_comparison_histograms(res_json, res_json2, hist, desc_1='NLDAS-2', desc_2='GridMET')
+    # plot_residuals_comparison_histograms(res_json, res_json2, hist, desc_1='NLDAS-2', desc_2='GridMET')
 
     # NDLAS-2 USA - CAN comparison ==============
     res_json = os.path.join(d, 'weather_station_data_processing', 'error_analysis',
@@ -344,7 +459,7 @@ if __name__ == '__main__':
     res_json2 = os.path.join(d, 'weather_station_data_processing', 'error_analysis',
                              'all_residuals_nldas2_north.json')
     hist = os.path.join(d, 'weather_station_data_processing', 'error_analysis', 'joined_resid_hist')
-    plot_residuals_comparison_histograms(res_json, res_json2, hist, desc_1='United States', desc_2='Canada')
+    # plot_residuals_comparison_histograms(res_json, res_json2, hist, desc_1='United States', desc_2='Canada')
 
     model_ = 'nldas2'
     res_json = os.path.join(d, 'weather_station_data_processing', 'error_analysis',
@@ -358,10 +473,20 @@ if __name__ == '__main__':
     # plot_eto_var_scatter_histograms(residuals, scatter)
 
     heat = os.path.join(d, 'weather_station_data_processing', 'error_analysis', 'heatmap')
-    # plot_resid_corr_heatmap(joined_resid, heat)
+    # plot_resid_corr_heatmap(res_json, heat)
 
     decomp = os.path.join(d, 'weather_station_data_processing', 'error_analysis', 'var_decomp_stations_tprop.csv')
     decomp_plt = os.path.join(d, 'weather_station_data_processing', 'error_analysis',
                               'decomp_barplot', 'var_decomp_stations_notprop.png')
     # station_barplot(decomp, decomp_plt)
+
+    sta_res = os.path.join(d, 'weather_station_data_processing', 'error_analysis',
+                           'station_residuals_{}_month.json'.format(model_))
+    whisker = os.path.join(d, 'weather_station_data_processing', 'error_analysis', 'box_whisker')
+    plot_monthly_residuals(sta_res, 'eto', whisker)
+
+    sta_res = os.path.join(d, 'weather_station_data_processing', 'error_analysis',
+                           'station_residuals_{}_annual.json'.format(model_))
+    # annual_residuals(sta_res, 'eto', None)
+
 # ========================= EOF ====================================================================
