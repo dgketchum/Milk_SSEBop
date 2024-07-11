@@ -56,7 +56,7 @@ def eta_timeseries_volume(csv_dir, plot_dir):
     df = pd.DataFrame(data=vals, index=df.index, columns=df.columns)
 
     plots = []
-    colors = Category10[10]
+    colors = ['', '#e69073', '#e0cd88', '#196d12']
 
     fig, ax = plt.subplots(figsize=(15, 5))
 
@@ -64,7 +64,7 @@ def eta_timeseries_volume(csv_dir, plot_dir):
     ax.xaxis.set_major_locator(mdates.YearLocator(base=6))
     plt.setp(ax.get_xticklabels(), rotation=45, ha="right")
 
-    for lc, key in zip(['Agriculture', 'Grass/Shrubland', 'Forest'], [1, 2, 3]):
+    for lc, key in zip(['Cropland', 'Grass/Shrubland', 'Forest'], [1, 2, 3]):
         ax.plot(df.index, df['et_{}'.format(key)].values, color=colors[key], label=lc)
 
     plt.ylabel('ET km$^3$')
@@ -79,7 +79,7 @@ def eta_timeseries_volume(csv_dir, plot_dir):
                width=3600, height=800,
                x_axis_type='datetime')
 
-    for lc, key in zip(['Agriculture', 'Grass/Shrubland', 'Forest'], [1, 2, 3]):
+    for lc, key in zip(['Cropland', 'Grass/Shrubland', 'Forest'], [1, 2, 3]):
         p.line(df.index, df['et_{}'.format(key)].values, line_width=1.0, color=colors[key], legend_label=lc)
 
     p.legend.location = 'top_left'
@@ -195,12 +195,12 @@ if __name__ == '__main__':
     error_json = os.path.join(d, 'validation', 'error_analysis', 'ec_comparison.json')
 
     out_fig = os.path.join(d, 'validation', 'plots', 'all_ec_woFPe.png')
-    eta_scatter(error_json, out_fig)
+    # eta_scatter(error_json, out_fig)
 
     extracts = os.path.join(d, 'results', 'et_extracts')
     ts_out = os.path.join(d, 'results', 'timeseries_plots')
 
-    # eta_timeseries_volume(extracts, ts_out)
+    eta_timeseries_volume(extracts, ts_out)
 
     decomp = os.path.join(d, 'validation', 'error_analysis', 'var_decomp_stations.csv')
     out_fig = os.path.join(d, 'validation', 'plots', 'ec_decomp_barplot.png')
