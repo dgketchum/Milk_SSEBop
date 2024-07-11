@@ -194,13 +194,13 @@ if __name__ == '__main__':
 
     error_json = os.path.join(d, 'validation', 'error_analysis', 'ec_comparison.json')
 
-    out_fig = os.path.join(d, 'validation', 'plots', 'all_ec_woFPe.png')
-    # eta_scatter(error_json, out_fig)
+    out_fig = os.path.join(d, 'validation', 'plots', 'ec_comparison.png')
+    eta_scatter(error_json, out_fig)
 
     extracts = os.path.join(d, 'results', 'et_extracts')
     ts_out = os.path.join(d, 'results', 'timeseries_plots')
 
-    eta_timeseries_volume(extracts, ts_out)
+    # eta_timeseries_volume(extracts, ts_out)
 
     decomp = os.path.join(d, 'validation', 'error_analysis', 'var_decomp_stations.csv')
     out_fig = os.path.join(d, 'validation', 'plots', 'ec_decomp_barplot.png')
