@@ -3,6 +3,7 @@ import sys
 from calendar import monthrange
 
 import ee
+import pandas as pd
 
 from ee_api.landcover import get_landcover
 
@@ -55,6 +56,24 @@ def get_test_fc():
     features = [ee.Feature(g, {'FID': c}) for g, c in zip([ag, grass, forest], [1, 2, 3])]
     fc = ee.FeatureCollection(features)
 
+    return fc
+
+
+def get_rs_study_fc():
+    study = ee.Geometry.Polygon([
+        [-119.92571095037613, 39.7557953359934],
+        [-102.12785938787613, 39.6881938941324],
+        [-102.12785938787613, 49.36630045599855],
+        [-105.20403126287613, 49.194291951927646],
+        [-105.24797657537613, 50.887463420761975],
+        [-114.52043751287613, 50.887463420761975],
+        [-114.52043751287613, 49.16556552862816],
+        [-120.10149220037613, 49.28037119664759],
+        [-119.92571095037613, 39.7557953359934],
+    ])
+
+    features = [ee.Feature(g, {'FID': c}) for g, c in zip([study], [1])]
+    fc = ee.FeatureCollection(features)
     return fc
 
 
@@ -142,7 +161,6 @@ def export_gridded_data(tables, bucket, years, description, debug=False, clip_fc
                                                            reducer=ee.Reducer.sum(),
                                                            scale=30)
             if debug:
-
                 et_data = et_data.getInfo()
                 lc_data = lc_data.getInfo()
 
@@ -187,9 +205,10 @@ def export_mean_annual_raster(bucket, years, description, mask=None, clip_fc=Non
     e = '{}-12-31'.format(years[-1])
 
     if clip:
-        et = ee.ImageCollection(ET_COLLECTION).filterDate(s, e).select('et').sum().divide(len(years)).clip(clip).float()
+        et = ee.ImageCollection(ET_COLLECTION).filterDate(s, e).select('count').sum().divide(len(years)).clip(
+            clip).float()
     else:
-        et = ee.ImageCollection(ET_COLLECTION).filterDate(s, e).select('et').sum().divide(len(years)).float()
+        et = ee.ImageCollection(ET_COLLECTION).filterDate(s, e).select('count').sum().divide(len(years)).float()
 
     lc_band = lc_band.reproject(crs='EPSG:5070', scale=30).resample('bilinear')
     et = et.reproject(crs='EPSG:5070', scale=30).resample('bilinear')
@@ -203,11 +222,13 @@ def export_mean_annual_raster(bucket, years, description, mask=None, clip_fc=Non
     else:
         desc = '{}_{}_{}'.format(description, years[0], years[-1])
 
+    region = clip.geometry() if clip else None
+
     task = ee.batch.Export.image.toCloudStorage(
         image=et,
         bucket=bucket,
         description=desc,
-        region=clip.geometry(),
+        region=region,
         scale=resolution,
         maxPixels=1e13,
     )
@@ -216,16 +237,38 @@ def export_mean_annual_raster(bucket, years, description, mask=None, clip_fc=Non
     print(desc)
 
 
+def count_images_used(csv):
+    ct = 0
+    feature_coll = get_rs_study_fc()
+    ETF = 'projects/usgs-gee-nhm-ssebop/assets/ssebop/landsat/c02'
+    df = pd.read_csv(csv)
+    prs = ['{}{}'.format(str(r['PATH']).rjust(3, '0'), str(r['ROW']).rjust(3, '0')) for i, r in df.iterrows()]
+
+    for year in range(1985, 2023):
+        coll = ee.ImageCollection(ETF).filterDate('{}-01-01'.format(year), '{}-12-31'.format(year))
+        coll = coll.filterBounds(feature_coll)
+        scenes = coll.aggregate_histogram('system:index').getInfo()
+        scenes = [k.split('_')[1] for k in scenes.keys()]
+        scenes = [s for s in scenes if s in prs]
+        ct += len(scenes)
+        print('{} in {}'.format(len(scenes), year))
+
+    print('{} images'.format(ct))
+
+
 if __name__ == '__main__':
     ee.Authenticate()
     ee.Initialize(project='ssebop-montana')
 
-    export_gridded_data(SMM_MULTI, 'wudr', years=[i for i in range(1985, 2024)],
-                        description='smm', debug=False, join_col='OBJECTID', **{'target_classes': [0, 1, 2, 3]})
+    # export_gridded_data(SMM_MULTI, 'wudr', years=[i for i in range(1985, 2024)],
+    #                     description='smm', debug=False, join_col='OBJECTID', **{'target_classes': [0, 1, 2, 3]})
 
-    # masks = [None, 1, 2, 3]
-    # for mask_ in masks:
-    #     export_mean_annual_raster('wudr', years=[i for i in range(1985, 2024)], clip_fc=SMM_DISSOLVE,
-    #                               description='smm_mean_annual_et', mask=mask_, resolution=30)
+    masks = [None, 1, 2, 3]
+    for mask_ in masks:
+        export_mean_annual_raster('wudr', years=[i for i in range(1985, 1986)], clip_fc=None,
+                                  description='smm', mask=mask_, resolution=30)
+        break
 
+    c = '/media/research/IrrigationGIS/milk/ancillary/wrs2_study_area.csv'
+    count_images_used(c)
 # ========================= EOF ================================================================================
