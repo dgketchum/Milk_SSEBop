@@ -23,10 +23,6 @@ def ec_comparison(stations, station_data, ssebop_dir, out_file):
     results_dict = {}
     for i, (fid, row) in enumerate(station_list.iterrows()):
 
-        if fid == 'US-FPe':
-            print('skipping {}'.format(fid))
-            continue
-
         print('\n{} of {}: {}'.format(i + 1, station_list.shape[0], fid))
 
         sdf_file = os.path.join(station_data, '{}_daily_data.csv'.format(fid))
@@ -130,7 +126,7 @@ if __name__ == '__main__':
     sta_data = os.path.join(d, 'eddy_covariance_data_processing', 'corrected_data')
     ssebop_data = os.path.join(d, 'validation', 'daily_overpass_date_ssebop_et_at_eddy_covar_sites')
 
-    error_json = os.path.join(d, 'validation', 'error_analysis', 'ec_comparison.json')
+    error_json = os.path.join(d, 'validation', 'error_analysis', 'ec_comparison_woFPE.json')
 
     ec_comparison(sta, sta_data, ssebop_data, error_json)
 
