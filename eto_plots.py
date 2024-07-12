@@ -57,8 +57,8 @@ LIMITS = {'vpd': 2.5,
           'mean_temp': 12}
 
 
-def plot_residuals_comparison_histograms(resids_file1, resids_file2, eto_file1, eto_file2, plot_dir, desc_1='NLDAS-2',
-                                         desc_2='GridMET'):
+def plot_residuals_comparison_histograms(resids_file1, resids_file2, eto_file1, eto_file2, plot_dir, palette_idx=(0, 1),
+                                         desc_1='NLDAS-2', desc_2='GridMET'):
     try:
         with open(resids_file1, 'r') as f1, open(resids_file2, 'r') as f2:
             res_dct1 = json.load(f1)
@@ -75,11 +75,12 @@ def plot_residuals_comparison_histograms(resids_file1, resids_file2, eto_file1, 
         ax3 = plt.subplot(gs[0, 2])
         ax4 = plt.subplot(gs[1, 0])
         ax5 = plt.subplot(gs[2, 0])
-        ax6 = plt.subplot(gs[1:, 1:])
+        ax6 = plt.subplot(gs[1:, 1])
+        ax7 = plt.subplot(gs[1:, 2])
 
-        axes = [ax1, ax2, ax3, ax4, ax5, ax6]
+        axes = [ax1, ax2, ax3, ax4, ax5, ax6, ax7]
 
-        palette = sns.color_palette('rocket', 2)
+        palette = sns.color_palette('rocket', 10)
 
         first = True
         for i, var in enumerate(STR_MAP_SIMPLE.keys()):
@@ -89,14 +90,14 @@ def plot_residuals_comparison_histograms(resids_file1, resids_file2, eto_file1, 
             residuals2 = res_dct2.get(var, [])
 
             try:
-                sns.histplot(residuals1, kde=True, stat='density', color=palette[0],
-                             label=f'{STR_MAP_SIMPLE[var]} {desc_1}',
+                sns.histplot(residuals1, kde=True, stat='density', color=palette[palette_idx[0]],
+                             label=f'{STR_MAP_SIMPLE[var]}',
                              ax=ax)
-                sns.histplot(residuals2, kde=True, stat='density', color=palette[1],
-                             label=f'{STR_MAP_SIMPLE[var]} {desc_2}', ax=ax)
+                sns.histplot(residuals2, kde=True, stat='density', color=palette[palette_idx[1]],
+                             label=f'{STR_MAP_SIMPLE[var]}', ax=ax)
 
-                ax.axvline(np.mean(residuals1), color='blue', linestyle='dashed', linewidth=1)
-                ax.axvline(np.mean(residuals2), color='orange', linestyle='dashed', linewidth=1)
+                ax.axvline(np.mean(residuals1), color=palette[palette_idx[0]], linestyle='dashed', linewidth=1)
+                ax.axvline(np.mean(residuals2), color=palette[palette_idx[1]], linestyle='dashed', linewidth=1)
 
                 if i == 0:
                     ax.set_xlabel(f'{STR_MAP[var]}\n(Observed minus Gridded)')
@@ -105,14 +106,14 @@ def plot_residuals_comparison_histograms(resids_file1, resids_file2, eto_file1, 
 
                 bbox = [0.0, 0.65, 0.4, 0.33]
                 cell_text = create_table_text(residuals1, residuals2, first, desc_1, desc_2)
-                table_obj = ax.table(cellText=cell_text, bbox=bbox, colWidths=[1, 2, 2], edges='horizontal')
+                ax.table(cellText=cell_text, bbox=bbox, colWidths=[1, 2, 2], edges='horizontal')
 
                 ax.set_ylabel('Frequency' if i == 0 else '')
                 ax.axvline(0, color='black', linestyle='solid', linewidth=0.7)
 
                 if first:
-                    patch1 = mpatches.Patch(color=palette[0], label=desc_1)
-                    patch2 = mpatches.Patch(color=palette[1], label=desc_2)
+                    patch1 = mpatches.Patch(color=palette[palette_idx[0]], label=desc_1)
+                    patch2 = mpatches.Patch(color=palette[palette_idx[1]], label=desc_2)
                     ax.legend(handles=[patch1, patch2], loc='upper right')
                     first = False
 
@@ -122,33 +123,41 @@ def plot_residuals_comparison_histograms(resids_file1, resids_file2, eto_file1, 
             except (ZeroDivisionError, ValueError, OverflowError) as e:
                 print(f"Error processing variable '{var}': {e}")
 
-        ax = axes[-1]
-        ax.plot([0.0, 8.0], [0.0, 8.0], 'k--', lw=1)
-        sns.kdeplot(
-            x=eto_data1['station'][:1000],
-            y=eto_data1['nldas2'][:1000],
-            color=palette[0],
-            fill=True,
-            alpha=0.4,
-            linewidths=1.5,
-            n_levels=3,
-            label=f'{STR_MAP_SIMPLE['eto']} {desc_1}',
-            ax=ax
-        )
-        sns.kdeplot(
-            x=eto_data2['station'][:1000],
-            y=eto_data2['gridmet'][:1000],
-            color=palette[1],
-            fill=True,
-            alpha=0.4,
-            linewidths=1.5,
-            n_levels=3,
-            label=,
-            ax=ax
-        )
-        ax.set_facecolor("#f0f0f0")
-        ax.set_xlabel("Station ETo [mm day$^{-1}$]")
-        ax.set_ylabel(r'Gridded ETo [mm day$^{-1}$]')
+        if desc_2 == 'GridMET':
+            x_labels = [r'NLDAS-2 ETo [mm day$^{-1}$]', r'GridMET ETo [mm day$^{-1}$]']
+            keys = ['nldas2', 'gridmet']
+        else:
+            x_labels = [r'United States ETo [mm day$^{-1}$]', r'Canada ETo [mm day$^{-1}$]']
+            keys = ['nldas2', 'nldas2']
+
+        for i, (eto_data, ax, label) in enumerate(zip([eto_data1, eto_data2], [axes[-2], axes[-1]], x_labels)):
+            x = eto_data['station']
+            y = eto_data[keys[i]]
+            slope, intercept, r_value, _, _ = linregress(x, y)
+            r_squared = r_value ** 2
+
+            sns.scatterplot(x=x, y=y, color=palette[palette_idx[i]], s=2, alpha=.9, ax=ax)
+
+            stats_text = f"R²: {r_squared:.2f}\nSlope: {slope:.2f}\nIntercept: {intercept:.2f}"
+
+            ax.text(
+                0.05, 0.95, stats_text,
+                transform=ax.transAxes,
+                verticalalignment='top',
+                bbox=dict(facecolor='white', alpha=0.7, edgecolor='black', linewidth=1),
+                fontsize=12
+            )
+
+            min_x = np.min(x)
+            max_x = np.max(x)
+            regression_line_y = slope * np.array([min_x, max_x]) + intercept
+            ax.plot([min_x, max_x], regression_line_y, linestyle='--', color=palette[palette_idx[i]])
+            ax.set_facecolor("white")
+            ax.set_xlabel("Station ETo [mm day$^{-1}$]")
+            ax.set_ylabel(label)
+
+            ax.plot([0.0, 12.0], [0.0, 12.0], 'k--', lw=1)
+
         plt.tight_layout()
 
         if not os.path.exists(plot_dir):
@@ -186,47 +195,6 @@ def create_textstr_value(residuals, stat_func):
             return '{:.2f}'.format(func(residuals).item())
     else:
         return 'No Data'
-
-
-def plot_residual_met_histograms(resids_file, plot_dir):
-    with open(resids_file, 'r') as f:
-        res_dct = json.load(f)
-
-    for var, residuals in res_dct.items():
-
-        mean_ = np.mean(residuals)
-        variance = np.var(residuals).item()
-        data_skewness = skew(residuals).item()
-        data_kurtosis = kurtosis(residuals).item()
-
-        plt.figure(figsize=(10, 6))
-
-        ax = sns.histplot(residuals, kde=True, color='grey')
-        kde_line = ax.lines[0]
-        kde_line.set_color('red')
-
-        plt.axvline(mean_, color='black', linestyle='dashed', linewidth=1)
-        plt.xlabel(f'{STR_MAP_SIMPLE[var]} Residuals\n(Observed minus NLDAS)')
-        plt.ylabel('Frequency')
-        plt.grid(True)
-
-        if var in LIMITS:
-            plt.xlim([-1 * LIMITS[var], LIMITS[var]])
-
-        textstr = '\n'.join((
-            r'$n={:,}$'.format(len(residuals)),
-            r'$\mu={:.2f}$'.format(mean_),
-            r'$\sigma^2={:.2f}$'.format(variance),
-            r'$\gamma_1={:.2f}$'.format(data_skewness),
-            r'$\gamma_2={:.2f}$'.format(data_kurtosis)))
-        props = dict(boxstyle='round', facecolor='white')
-        plt.gca().text(0.05, 0.95, textstr, transform=plt.gca().transAxes, fontsize=14,
-                       verticalalignment='top', bbox=props)
-        plt.tight_layout()
-        if not os.path.exists(plot_dir):
-            os.mkdir(plot_dir)
-        plot_path = os.path.join(plot_dir, f'{var}_residuals_histogram.png')
-        plt.savefig(plot_path)
 
 
 def plot_eto_var_scatter_histograms(resid_json, plot_dir):
@@ -473,7 +441,7 @@ if __name__ == '__main__':
         home = os.path.expanduser('~')
         d = os.path.join(home, 'data', 'IrrigationGIS', 'milk')
 
-    # GridMET - NLDAS-2 comparison ==============
+    # GridMET - NLDAS-2 comparison ===============================================================
     res_json = os.path.join(d, 'weather_station_data_processing', 'error_analysis',
                             'all_residuals_nldas2_south.json')
 
@@ -488,22 +456,28 @@ if __name__ == '__main__':
 
     hist = os.path.join(d, 'weather_station_data_processing', 'error_analysis', 'joined_resid_hist')
 
-    plot_residuals_comparison_histograms(res_json, res_json2, eto_json, eto_json2, hist,
-                                         desc_1='NLDAS-2', desc_2='GridMET')
+    # plot_residuals_comparison_histograms(res_json, res_json2, eto_json, eto_json2, hist,
+    #                                      desc_1='NLDAS-2', desc_2='GridMET', palette_idx=(4, 6))
 
-    # NDLAS-2 USA - CAN comparison ==============
+    # NDLAS-2 USA - CAN comparison ===============================================================
     res_json = os.path.join(d, 'weather_station_data_processing', 'error_analysis',
                             'all_residuals_nldas2_south.json')
+
     res_json2 = os.path.join(d, 'weather_station_data_processing', 'error_analysis',
                              'all_residuals_nldas2_north.json')
-    hist = os.path.join(d, 'weather_station_data_processing', 'error_analysis', 'joined_resid_hist')
-    # plot_residuals_comparison_histograms(res_json, res_json2, hist, desc_1='United States', desc_2='Canada')
 
-    model_ = 'nldas2'
-    res_json = os.path.join(d, 'weather_station_data_processing', 'error_analysis',
-                            'all_residuals_{}.json'.format(model_))
+    eto_json = os.path.join(d, 'weather_station_data_processing', 'comparison_data',
+                            'eto_all_nldas2_south.json')
+
+    eto_json2 = os.path.join(d, 'weather_station_data_processing', 'comparison_data',
+                             'eto_all_nldas2_north.json')
+
     hist = os.path.join(d, 'weather_station_data_processing', 'error_analysis', 'joined_resid_hist')
-    # plot_residual_met_histograms(res_json, hist)
+
+    # plot_residuals_comparison_histograms(res_json, res_json2, eto_json, eto_json2, hist,
+    #                                      desc_1='USA', desc_2='CAN', palette_idx=(2, 8))
+
+    # ==================================================================================================
 
     residuals = os.path.join(d, 'weather_station_data_processing', 'error_analysis',
                              'station_residuals_{}.json'.format(model_))
