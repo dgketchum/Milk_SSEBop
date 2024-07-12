@@ -1,7 +1,7 @@
 import json
 import os
 from calendar import month_abbr
-
+from matplotlib.gridspec import GridSpec
 import matplotlib.patches as mpatches
 import matplotlib.pyplot as plt
 import numpy as np
@@ -57,32 +57,33 @@ LIMITS = {'vpd': 2.5,
           'mean_temp': 12}
 
 
-def plot_residuals_comparison_histograms(resids_file1, resids_file2, plot_dir, desc_1='NLDAS-2', desc_2='GridMET'):
+def plot_residuals_comparison_histograms(resids_file1, resids_file2, eto_file1, eto_file2, plot_dir, desc_1='NLDAS-2',
+                                         desc_2='GridMET'):
     try:
         with open(resids_file1, 'r') as f1, open(resids_file2, 'r') as f2:
             res_dct1 = json.load(f1)
             res_dct2 = json.load(f2)
 
-        all_vars = set(res_dct1.keys()) | set(res_dct2.keys())
-        num_vars = len(all_vars)
-        num_rows = int(np.ceil(num_vars / 3))
+        with open(eto_file1, 'r') as f1, open(eto_file2, 'r') as f2:
+            eto_data1 = json.load(f1)
+            eto_data2 = json.load(f2)
 
-        fig, axes = plt.subplots(num_rows, 3, figsize=(18, 6 * num_rows))
+        fig = plt.figure(figsize=(18, 12))
+        gs = GridSpec(3, 3, figure=fig)
+        ax1 = plt.subplot(gs[0, 0])
+        ax2 = plt.subplot(gs[0, 1])
+        ax3 = plt.subplot(gs[0, 2])
+        ax4 = plt.subplot(gs[1, 0])
+        ax5 = plt.subplot(gs[2, 0])
+        ax6 = plt.subplot(gs[1:, 1:])
 
-        fig.delaxes(axes[1, 0])
-        fig.delaxes(axes[1, 2])
-
-        if num_vars % 3 != 0:
-            for i in range(num_vars % 3, 3):
-                fig.delaxes(axes[-1, i])
+        axes = [ax1, ax2, ax3, ax4, ax5, ax6]
 
         palette = sns.color_palette('rocket', 2)
 
         first = True
         for i, var in enumerate(STR_MAP_SIMPLE.keys()):
-            row = i // 3
-            col = i % 3
-            ax = axes[row, col]
+            ax = axes[i]
 
             residuals1 = res_dct1.get(var, [])
             residuals2 = res_dct2.get(var, [])
@@ -97,16 +98,16 @@ def plot_residuals_comparison_histograms(resids_file1, resids_file2, plot_dir, d
                 ax.axvline(np.mean(residuals1), color='blue', linestyle='dashed', linewidth=1)
                 ax.axvline(np.mean(residuals2), color='orange', linestyle='dashed', linewidth=1)
 
-                if col == 0 and row == 0:
+                if i == 0:
                     ax.set_xlabel(f'{STR_MAP[var]}\n(Observed minus Gridded)')
                 else:
                     ax.set_xlabel(f'{STR_MAP[var]}')
 
-                bbox = [0.02, 0.75, 0.4, 0.2]
+                bbox = [0.0, 0.65, 0.4, 0.33]
                 cell_text = create_table_text(residuals1, residuals2, first, desc_1, desc_2)
                 table_obj = ax.table(cellText=cell_text, bbox=bbox, colWidths=[1, 2, 2], edges='horizontal')
 
-                ax.set_ylabel('Frequency' if col == 0 else '')
+                ax.set_ylabel('Frequency' if i == 0 else '')
                 ax.axvline(0, color='black', linestyle='solid', linewidth=0.7)
 
                 if first:
@@ -121,6 +122,33 @@ def plot_residuals_comparison_histograms(resids_file1, resids_file2, plot_dir, d
             except (ZeroDivisionError, ValueError, OverflowError) as e:
                 print(f"Error processing variable '{var}': {e}")
 
+        ax = axes[-1]
+        ax.plot([0.0, 8.0], [0.0, 8.0], 'k--', lw=1)
+        sns.kdeplot(
+            x=eto_data1['station'][:1000],
+            y=eto_data1['nldas2'][:1000],
+            color=palette[0],
+            fill=True,
+            alpha=0.4,
+            linewidths=1.5,
+            n_levels=3,
+            label=f'{STR_MAP_SIMPLE['eto']} {desc_1}',
+            ax=ax
+        )
+        sns.kdeplot(
+            x=eto_data2['station'][:1000],
+            y=eto_data2['gridmet'][:1000],
+            color=palette[1],
+            fill=True,
+            alpha=0.4,
+            linewidths=1.5,
+            n_levels=3,
+            label=,
+            ax=ax
+        )
+        ax.set_facecolor("#f0f0f0")
+        ax.set_xlabel("Station ETo [mm day$^{-1}$]")
+        ax.set_ylabel(r'Gridded ETo [mm day$^{-1}$]')
         plt.tight_layout()
 
         if not os.path.exists(plot_dir):
@@ -448,10 +476,20 @@ if __name__ == '__main__':
     # GridMET - NLDAS-2 comparison ==============
     res_json = os.path.join(d, 'weather_station_data_processing', 'error_analysis',
                             'all_residuals_nldas2_south.json')
+
     res_json2 = os.path.join(d, 'weather_station_data_processing', 'error_analysis',
                              'all_residuals_gridmet.json')
+
+    eto_json = os.path.join(d, 'weather_station_data_processing', 'comparison_data',
+                            'eto_all_nldas2_south.json')
+
+    eto_json2 = os.path.join(d, 'weather_station_data_processing', 'comparison_data',
+                             'eto_all_gridmet.json')
+
     hist = os.path.join(d, 'weather_station_data_processing', 'error_analysis', 'joined_resid_hist')
-    # plot_residuals_comparison_histograms(res_json, res_json2, hist, desc_1='NLDAS-2', desc_2='GridMET')
+
+    plot_residuals_comparison_histograms(res_json, res_json2, eto_json, eto_json2, hist,
+                                         desc_1='NLDAS-2', desc_2='GridMET')
 
     # NDLAS-2 USA - CAN comparison ==============
     res_json = os.path.join(d, 'weather_station_data_processing', 'error_analysis',
@@ -483,7 +521,7 @@ if __name__ == '__main__':
     sta_res = os.path.join(d, 'weather_station_data_processing', 'error_analysis',
                            'station_residuals_{}_month.json'.format(model_))
     whisker = os.path.join(d, 'weather_station_data_processing', 'error_analysis', 'box_whisker')
-    plot_monthly_residuals(sta_res, 'eto', whisker)
+    # plot_monthly_residuals(sta_res, 'eto', whisker)
 
     sta_res = os.path.join(d, 'weather_station_data_processing', 'error_analysis',
                            'station_residuals_{}_annual.json'.format(model_))
