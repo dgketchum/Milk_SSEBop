@@ -30,7 +30,6 @@ STR_MAP = {
     'eto': r'ASCE Grass Reference Evapotranspiration [mm day$^{-1}$]'
 }
 
-
 LIMITS = {'vpd': 3,
           'rs': 0.8,
           'u2': 12,
@@ -41,7 +40,7 @@ PACIFIC = pytz.timezone('US/Pacific')
 
 
 def residuals(stations, station_data, gridded_data, station_residuals, all_residuals, model='nldas2',
-              location=None, monthly=False, annual=False):
+              comparison_out=None, location=None, monthly=False, annual=False):
     kw = station_par_map('agri')
     station_list = pd.read_csv(stations, index_col=kw['index'])
 
@@ -54,7 +53,10 @@ def residuals(stations, station_data, gridded_data, station_residuals, all_resid
     elif location == 'north' and model == 'nldas2':
         station_list = station_list[station_list['latitude'] >= 49.0]
 
-    errors, all_res_dict = {}, {v: [] for v in COMPARISON_VARS}
+    errors, all_res_dict, eto_estimates = {}, {v: [] for v in COMPARISON_VARS}, None
+
+    if comparison_out:
+        eto_estimates = {'station': [], model: []}
 
     for i, (fid, row) in enumerate(station_list.iterrows()):
 
@@ -81,8 +83,6 @@ def residuals(stations, station_data, gridded_data, station_residuals, all_resid
             gdf['mean_temp'] = (gdf['min_temp'] + gdf['max_temp']) * 0.5
             gdf = gdf[COMPARISON_VARS]
 
-            res_df = sdf[['eto']].copy()
-
             for var in COMPARISON_VARS:
                 s_var, n_var = '{}_station'.format(var), '{}_{}'.format(var, model)
                 df = pd.DataFrame(columns=[s_var], index=sdf.index, data=sdf[var].values)
@@ -92,7 +92,6 @@ def residuals(stations, station_data, gridded_data, station_residuals, all_resid
                 df[n_var] = gdf.loc[df.index, var].values
 
                 if annual:
-                    # only for station-based residuals, is ignoring writing residual csv
                     df['year'] = [int(i) for i in df.index.year]
                     df['count'] = [1 for _ in range(df.shape[0])]
                     res = df[[s_var, n_var, 'year', 'count']].groupby('year').sum()
@@ -103,28 +102,24 @@ def residuals(stations, station_data, gridded_data, station_residuals, all_resid
                     all_res_dict[var] += res[f'{var}_residual'].tolist()
 
                 elif monthly:
-                    # only for station-based residuals, is ignoring writing residual csv
                     df['month'] = [int(m) for m in df.index.month]
                     for month in df['month'].unique():
-
                         res = df.loc[df['month'] == month, s_var] - df.loc[df['month'] == month, n_var]
                         sta_res[var][month] = res.tolist()
                         all_res_dict[var].extend(res.tolist())
 
                 else:
                     residuals = df[s_var] - df[n_var]
-                    res_df[var] = residuals
-
                     df[f'eto_{model}'] = gdf.loc[df.index, 'eto'].values
                     eto_residuals = df['eto_station'] - df[f'eto_{model}']
-                    res_df[var] = eto_residuals
+                    doy = [int(i.dayofyear) for i in df.index]
 
-                    sta_res[var] = [list(residuals), list(eto_residuals)]
+                    sta_res[var] = [list(residuals), list(eto_residuals), doy]
                     all_res_dict[var] += list(residuals)
 
-                    res_df['eto'] = sdf['eto'] - gdf['eto']
-                    _file = os.path.join(gridded_data, 'res_{}.csv'.format(fid))
-                    res_df.to_csv(_file)
+            if comparison_out:
+                eto_estimates[model].extend(df[f'eto_{model}'].to_list())
+                eto_estimates['station'].extend(df['eto_station'].to_list())
 
             errors[fid] = sta_res.copy()
 
@@ -134,20 +129,30 @@ def residuals(stations, station_data, gridded_data, station_residuals, all_resid
     if annual:
         station_residuals = station_residuals.replace('.json', '_annual.json')
         all_residuals = all_residuals.replace('.json', '_annual.json')
+        if comparison_out:
+            comparison_out = comparison_out.replace('.json', '_annual.json')
 
     if monthly:
         station_residuals = station_residuals.replace('.json', '_month.json')
         all_residuals = all_residuals.replace('.json', '_month.json')
+        if comparison_out:
+            comparison_out = comparison_out.replace('.json', '_month.json')
 
     if location:
         station_residuals = station_residuals.replace('.json', '_{}.json'.format(location))
         all_residuals = all_residuals.replace('.json', '_{}.json'.format(location))
+        if comparison_out:
+            comparison_out = comparison_out.replace('.json', '_{}.json'.format(location))
 
     with open(station_residuals, 'w') as dst:
         json.dump(errors, dst, indent=4)
 
     with open(all_residuals, 'w') as dst:
         json.dump(all_res_dict, dst, indent=4)
+
+    if comparison_out:
+        with open(comparison_out, 'w') as dst:
+            json.dump(eto_estimates, dst, indent=4)
 
 
 def station_par_map(station_type):
@@ -241,7 +246,10 @@ if __name__ == '__main__':
     sta_res = os.path.join(d, 'weather_station_data_processing', 'error_analysis',
                            'station_residuals_{}.json'.format(model_))
 
+    comparison_js = os.path.join(d, 'weather_station_data_processing', 'comparison_data',
+                                 'eto_all_{}.json'.format(model_))
+
     residuals(station_meta, sta_data, grid_data, sta_res, res_json, model=model_, monthly=True, annual=False,
-              location=None)
+              location=None, comparison_out=comparison_js)
 
 # ========================= EOF ====================================================================

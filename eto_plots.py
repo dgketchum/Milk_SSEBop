@@ -57,8 +57,8 @@ LIMITS = {'vpd': 2.5,
           'mean_temp': 12}
 
 
-def plot_residuals_comparison_histograms(resids_file1, resids_file2, eto_file1, eto_file2, plot_dir, palette_idx=(0, 1),
-                                         desc_1='NLDAS-2', desc_2='GridMET'):
+def plot_residuals_comparison_histograms(resids_file1, resids_file2, eto_file1, eto_file2, plot_dir,
+                                         palette_idx=(0, 1), desc_1='NLDAS-2', desc_2='GridMET'):
     try:
         with open(resids_file1, 'r') as f1, open(resids_file2, 'r') as f2:
             res_dct1 = json.load(f1)
@@ -265,32 +265,43 @@ def plot_eto_var_scatter_histograms(resid_json, plot_dir):
     plt.close()
 
 
-def plot_resid_corr_heatmap(joined_resid_csv, plot_dir):
-    with open(joined_resid_csv, 'r') as f:
-        dct = json.load(f)
+def plot_resid_corr_heatmap(joined_resid_json, resid_csv_dir, plot_dir):
+    with open(joined_resid_json, 'r') as f_json:
+        dct_json = json.load(f_json)
+    df_json = pd.DataFrame.from_dict(dct_json, orient='columns')
+    df_json = df_json.rename(columns=STR_MAP_SIMPLE)
 
-    df = pd.DataFrame.from_dict(dct, orient='columns')
-    df = df.rename(columns=STR_MAP_SIMPLE)
-    df = df[['ETo', 'Rn', 'Mean Temp', 'VPD', 'Wind Speed']]
-    corr_matrix = df.corr()
+    csv_files = [f for f in os.listdir(resid_csv_dir) if f.endswith('.csv')]
+    df_csv_list = []
+    for file in csv_files:
+        filepath = os.path.join(resid_csv_dir, file)
+        df_csv_list.append(pd.read_csv(filepath))
 
-    mask = np.zeros_like(corr_matrix)
-    mask[np.triu_indices_from(mask)] = True
+    df_csv = pd.concat(df_csv_list, ignore_index=True)
+    df_csv['mean_temp'] = 0.5 * (df_csv['min_temp'] + df_csv['max_temp'])
+    df_csv = df_csv.rename(columns=STR_MAP_SIMPLE)
+    df_csv = df_csv[[v for k, v in STR_MAP_SIMPLE.items()]]
 
-    plt.figure(figsize=(16, 12))
-    sns.heatmap(corr_matrix,
-                annot=True,
-                fmt='.2f',
-                cmap='rocket',
-                square=True,
-                mask=mask,
-                cbar=False,
-                annot_kws={'size': 16})
+    corr_matrix_json = df_json[['ETo', 'Rn', 'Mean Temp', 'VPD', 'Wind Speed']].corr()
+    corr_matrix_csv = df_csv[['ETo', 'Rn', 'Mean Temp', 'VPD', 'Wind Speed']].corr()
 
-    plot_path = os.path.join(plot_dir, 'correlation_matrix_heatmap.png')
+    joined_corr_matrix = corr_matrix_csv.values.copy()
+    ur = np.triu_indices_from(joined_corr_matrix)
+    joined_corr_matrix[ur] = corr_matrix_json.values[ur]
+    id_ = np.diag_indices(joined_corr_matrix.shape[0])
+    joined_corr_matrix[id_] = np.nan
+
+    plt.figure(figsize=(12, 12))
+    sns.heatmap(joined_corr_matrix, annot=True, fmt=".2f", cmap="rocket", square=True, mask=None,
+                cbar=False, annot_kws={'size': 16})
+    variables = list(corr_matrix_json.columns)
+    plt.xticks(np.arange(len(variables)) + 0.5, labels=variables, rotation=45)
+    plt.yticks(np.arange(len(variables)) + 0.5, labels=variables, rotation=45)
+
     plt.tight_layout()
+    plot_path = os.path.join(plot_dir, 'correlation_matrix_heatmap.png')
     plt.savefig(plot_path)
-    plt.close()
+    a = 1
 
 
 def station_barplot(csv, out_file):
@@ -352,12 +363,15 @@ def plot_monthly_residuals_by_station(station_residuals_file, out_fig, variable_
             plt.close()
 
 
-def plot_monthly_residuals(station_residuals_file, variable_name, output_dir):
-    with open(station_residuals_file, 'r') as f:
-        data = json.load(f)
+def plot_monthly_residuals(monthly_residuals, daily_residuals, variable_name, output_dir):
+    with open(monthly_residuals, 'r') as f:
+        monthly_data = json.load(f)
+
+    with open(daily_residuals, 'r') as f_eto:
+        daily_data = json.load(f_eto)
 
     all_data = []
-    for station_id, station_data in data.items():
+    for station_id, station_data in monthly_data.items():
         for month, res in station_data.get(variable_name, {}).items():
             if res:
                 mean_val = np.mean(res)
@@ -367,20 +381,25 @@ def plot_monthly_residuals(station_residuals_file, variable_name, output_dir):
 
     df = pd.DataFrame(all_data)
 
-    # growing season stats:
-    idx = [i for i, r in df.iterrows() if r['Month'] in [str(m) for m in range(4, 11)]]
-    gsdf = df.loc[idx].copy()
-    gsdf = gsdf[['Station', 'Mean']].groupby('Station').mean()
+    month_to_doy = {1: 15, 2: 46, 3: 75, 4: 105, 5: 135, 6: 166, 7: 196, 8: 227, 9: 258, 10: 288, 11: 319, 12: 349}
+    doy_to_month = {v: k for k, v in month_to_doy.items()}
 
     plt.figure(figsize=(15, 6))
     ax = plt.gca()
-    # ax.set_xlim([-0.5, 11.5])
-    ax.set_xticks(range(12))
-    ax.set_xticklabels(month_abbr[1:])
+    ax.set_xticks(range(1, 366))
+
+    ticks = []
+    for doy in range(1, 366):
+        if doy in doy_to_month.keys():
+            ticks.append(month_abbr[doy_to_month[doy]])
+        else:
+            ticks.append('')
+
+    ax.set_xticklabels(ticks)
 
     num_stations = df['Station'].nunique()
-    x_offset = 1.0 / num_stations
-    start_offset = -0.8 + (0.8 / num_stations) / 2
+    x_offset = 366 / 12 / num_stations
+    start_offset = -12 + (0.8 / num_stations) / 2
 
     for m in range(1, 13):
         vals = df[df['Month'] == str(m)]['Mean'].values
@@ -390,9 +409,10 @@ def plot_monthly_residuals(station_residuals_file, variable_name, output_dir):
 
     for station in df['Station'].unique():
         station_df = df[df['Station'] == station]
+        station_df['DOY'] = station_df['Month'].astype(int).map(month_to_doy)
 
         ax.errorbar(
-            station_df['Month'].astype(int) - 0.5 + start_offset,
+            station_df['DOY'] - 0.5 + start_offset,
             station_df['Mean'],
             yerr=[station_df['Mean'] - station_df['25th'], station_df['75th'] - station_df['Mean']],
             fmt='none',
@@ -400,24 +420,47 @@ def plot_monthly_residuals(station_residuals_file, variable_name, output_dir):
             ecolor='black',
             capsize=0
         )
-
         ax.plot(
-            station_df['Month'].astype(int) - 0.5 + start_offset,
+            station_df['DOY'] - 0.5 + start_offset,
             station_df['Mean'],
             marker='o', linestyle='none', markersize=2, color='black',
-            label=station if start_offset == 0 else ''  # Only label first point for each station
+            label='ETo Residual'
         )
 
         start_offset += x_offset
 
-    plt.axhline(0, color='red', linestyle='-', linewidth=1)
-    plt.ylabel(f"{variable_name} Residual", fontsize=12)
+    eto_by_doy = {d: [] for d in range(1, 366)}
+    for doy in range(1, 366):
+        for sid, data in daily_data.items():
+            eto = [b for a, b, c in zip(*data['eto']) if c == doy]
+            eto_by_doy[doy].extend(eto)
+
+    eto_medians = [np.nanmedian(eto_by_doy[doy]) for doy in range(1, 366)]
+    eto_std = [np.nanstd(eto_by_doy[doy]) for doy in range(1, 366)]
+    doys = list(range(1, 366))
+
+    ax.plot(
+        doys,
+        eto_medians,
+        color="red",
+        linewidth=1.5,
+        label="Median ETo Daily Residual"
+    )
+    # ax.fill_between(
+    #     doys,
+    #     np.array(eto_medians) - np.array(eto_std),
+    #     np.array(eto_medians) + np.array(eto_std),
+    #     color='red',
+    #     alpha=0.1,
+    #     label="ETO Std Dev"
+    # )
+
+    plt.axhline(0, color='black', linestyle='-', linewidth=1)
     plt.xlabel("Month", fontsize=12)
-    # plt.legend(title='Station', bbox_to_anchor=(1.05, 1), loc='upper left')
+    plt.ylabel(f"ETo Residual", fontsize=12)
 
     plt.tight_layout()
     plt.savefig(os.path.join(output_dir, f'{variable_name}_all_stations_residuals_boxplot.png'))
-    plt.show()
 
 
 def annual_residuals(station_residuals_file, variable_name, output_dir):
@@ -477,26 +520,37 @@ if __name__ == '__main__':
     # plot_residuals_comparison_histograms(res_json, res_json2, eto_json, eto_json2, hist,
     #                                      desc_1='USA', desc_2='CAN', palette_idx=(2, 8))
 
-    # ==================================================================================================
-
+    # ETo - Met Varaible scatter shows error correlation ==========================================
+    model_ = 'nldas2'
     residuals = os.path.join(d, 'weather_station_data_processing', 'error_analysis',
                              'station_residuals_{}.json'.format(model_))
     scatter = os.path.join(d, 'weather_station_data_processing', 'error_analysis', 'joined_resid_scatter', model_)
     # plot_eto_var_scatter_histograms(residuals, scatter)
 
+    # Data and Residual correlation ===============================================================
+    res_json = os.path.join(d, 'weather_station_data_processing', 'error_analysis',
+                            'all_residuals_nldas2.json')
+    gridded = os.path.join(d, 'weather_station_data_processing', 'gridded', 'nldas2')
     heat = os.path.join(d, 'weather_station_data_processing', 'error_analysis', 'heatmap')
-    # plot_resid_corr_heatmap(res_json, heat)
+    # plot_resid_corr_heatmap(res_json, gridded, heat)
 
+    # Varince Decomposition Barplot  ===============================================================
     decomp = os.path.join(d, 'weather_station_data_processing', 'error_analysis', 'var_decomp_stations_tprop.csv')
     decomp_plt = os.path.join(d, 'weather_station_data_processing', 'error_analysis',
                               'decomp_barplot', 'var_decomp_stations_notprop.png')
     # station_barplot(decomp, decomp_plt)
 
-    sta_res = os.path.join(d, 'weather_station_data_processing', 'error_analysis',
-                           'station_residuals_{}_month.json'.format(model_))
-    whisker = os.path.join(d, 'weather_station_data_processing', 'error_analysis', 'box_whisker')
-    # plot_monthly_residuals(sta_res, 'eto', whisker)
+    # Monthly Station Residual, median daily  ===============================================================
+    monthly_ = os.path.join(d, 'weather_station_data_processing', 'error_analysis',
+                            'station_residuals_{}_month.json'.format(model_))
 
+    daily_ = os.path.join(d, 'weather_station_data_processing', 'error_analysis',
+                          'station_residuals_{}.json'.format(model_))
+
+    whisker = os.path.join(d, 'weather_station_data_processing', 'error_analysis', 'box_whisker')
+    plot_monthly_residuals(monthly_, daily_, 'eto', whisker)
+
+    # Count pos/neg mean resid annually, no plot  ===============================================================
     sta_res = os.path.join(d, 'weather_station_data_processing', 'error_analysis',
                            'station_residuals_{}_annual.json'.format(model_))
     # annual_residuals(sta_res, 'eto', None)
