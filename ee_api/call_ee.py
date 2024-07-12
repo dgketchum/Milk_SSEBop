@@ -241,17 +241,24 @@ def count_images_used(csv):
     ct = 0
     feature_coll = get_rs_study_fc()
     ETF = 'projects/usgs-gee-nhm-ssebop/assets/ssebop/landsat/c02'
+    OPENET_ETF = 'projects/openet/ssebop/landsat/c02'
     df = pd.read_csv(csv)
     prs = ['{}{}'.format(str(r['PATH']).rjust(3, '0'), str(r['ROW']).rjust(3, '0')) for i, r in df.iterrows()]
 
-    for year in range(1985, 2023):
-        coll = ee.ImageCollection(ETF).filterDate('{}-01-01'.format(year), '{}-12-31'.format(year))
+    for year in range(2023, 2024):
+
+        if year > 2022:
+            coll = ee.ImageCollection(OPENET_ETF).filterDate('{}-01-01'.format(year), '{}-12-31'.format(year))
+        else:
+            coll = ee.ImageCollection(ETF).filterDate('{}-01-01'.format(year), '{}-12-31'.format(year))
+
         coll = coll.filterBounds(feature_coll)
         scenes = coll.aggregate_histogram('system:index').getInfo()
+        instruments = list(set([k.split('_')[0] for k in scenes.keys()]))
         scenes = [k.split('_')[1] for k in scenes.keys()]
         scenes = [s for s in scenes if s in prs]
         ct += len(scenes)
-        print('{} in {}'.format(len(scenes), year))
+        print('{} in {} from {}'.format(len(scenes), year, ' ,'.join(instruments)))
 
     print('{} images'.format(ct))
 
@@ -263,11 +270,11 @@ if __name__ == '__main__':
     # export_gridded_data(SMM_MULTI, 'wudr', years=[i for i in range(1985, 2024)],
     #                     description='smm', debug=False, join_col='OBJECTID', **{'target_classes': [0, 1, 2, 3]})
 
-    masks = [None, 1, 2, 3]
-    for mask_ in masks:
-        export_mean_annual_raster('wudr', years=[i for i in range(1985, 1986)], clip_fc=None,
-                                  description='smm', mask=mask_, resolution=30)
-        break
+    # masks = [None, 1, 2, 3]
+    # for mask_ in masks:
+    #     export_mean_annual_raster('wudr', years=[i for i in range(1985, 1986)], clip_fc=None,
+    #                               description='smm', mask=mask_, resolution=30)
+    #     break
 
     c = '/media/research/IrrigationGIS/milk/ancillary/wrs2_study_area.csv'
     count_images_used(c)
