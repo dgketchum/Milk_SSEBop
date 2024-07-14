@@ -23,7 +23,7 @@ ETA_REMAP = {'eta_obs': 'Flux Tower Observed ET [mm day$^{-1}$]',
              'eto_nldas': 'NLDAS-2 ASCE Grass Reference ET [mm day$^{-1}$]'}
 
 
-def eta_timeseries_volume(csv_dir, plot_dir):
+def eta_timeseries_volume(csv_dir, plot_dir, volume=True):
     l = [os.path.join(csv_dir, x) for x in os.listdir(csv_dir)]
 
     first, adf = True, None
@@ -47,13 +47,23 @@ def eta_timeseries_volume(csv_dir, plot_dir):
         df = df.sort_index()
         df = df.resample('M').sum()
 
+        if volume:
+            for p in ['all', 1, 2, 3]:
+                df[f'et_{p}'] = df[f'et_{p}'] * df[f'lc_{p}'] / 1e9
         for p in ['all', 1, 2, 3]:
-            df[f'et_{p}'] = df[f'et_{p}'] * df[f'lc_{p}'] / 1e9
+            df[f'lc_{p}'] = df[f'lc_{p}'] / 1e6
 
         dct[fid] = df.copy()
 
     vals = dct[1].values + dct[2].values
     df = pd.DataFrame(data=vals, index=df.index, columns=df.columns)
+
+    classes = ['all', 1, 2, 3]
+    et_cols = [f'et_{p}' for p in classes]
+    lc_cols = [f'lc_{p}' for p in classes]
+    groups = {col: 'sum' if col in et_cols else 'mean' for col in et_cols + lc_cols}
+
+    sdf = df.groupby([df.index.year]).agg(groups)
 
     plots = []
     colors = ['', '#e69073', '#e0cd88', '#196d12']
@@ -118,7 +128,7 @@ def eta_scatter(results_file, fig_file):
 
     fig, axes = plt.subplots(2, 1, figsize=(8, 12))
     axes = axes.flatten()
-    sns.scatterplot(x='eta_obs', y='eta_ssebop', hue='fid', data=df, ax=axes[0], legend=True, style='fid',)
+    sns.scatterplot(x='eta_obs', y='eta_ssebop', hue='fid', data=df, ax=axes[0], legend=True, style='fid', )
     axes[0].set(xlabel=ETA_REMAP['eta_obs'])
     axes[0].set(ylabel=ETA_REMAP['eta_ssebop'])
 
@@ -195,12 +205,12 @@ if __name__ == '__main__':
     error_json = os.path.join(d, 'validation', 'error_analysis', 'ec_comparison.json')
 
     out_fig = os.path.join(d, 'validation', 'plots', 'ec_comparison.png')
-    eta_scatter(error_json, out_fig)
+    # eta_scatter(error_json, out_fig)
 
     extracts = os.path.join(d, 'results', 'et_extracts')
     ts_out = os.path.join(d, 'results', 'timeseries_plots')
 
-    # eta_timeseries_volume(extracts, ts_out)
+    eta_timeseries_volume(extracts, ts_out, volume=False)
 
     decomp = os.path.join(d, 'validation', 'error_analysis', 'var_decomp_stations.csv')
     out_fig = os.path.join(d, 'validation', 'plots', 'ec_decomp_barplot.png')
