@@ -163,14 +163,6 @@ def variance_decomposition(sim_results, station_meta, decomp_out, station_type='
     pprint('summary variance decomposition: {}'.format(decomp))
 
 
-def estimate_error_dist(res):
-    mean_ = np.mean(res).item()
-    variance = np.var(res).item()
-    data_skewness = skew(res).item()
-    data_kurtosis = kurtosis(res).item()
-    return mean_, variance, data_skewness, data_kurtosis
-
-
 if __name__ == '__main__':
 
     d = '/media/research/IrrigationGIS/milk'

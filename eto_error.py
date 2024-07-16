@@ -40,7 +40,7 @@ PACIFIC = pytz.timezone('US/Pacific')
 
 
 def residuals(stations, station_data, gridded_data, station_residuals, all_residuals, model='nldas2',
-              comparison_out=None, location=None, monthly=False, annual=False):
+              comparison_out=None, location=None, monthly=False, annual=False, subseason=None):
     kw = station_par_map('agri')
     station_list = pd.read_csv(stations, index_col=kw['index'])
 
@@ -52,6 +52,13 @@ def residuals(stations, station_data, gridded_data, station_residuals, all_resid
 
     elif location == 'north' and model == 'nldas2':
         station_list = station_list[station_list['latitude'] >= 49.0]
+
+    if subseason == 'winter':
+        subseason_doy = list(range(336, 366)) + list(range(1, 60))
+    elif subseason == 'summer':
+        subseason_doy = list(range(153, 244))
+    else:
+        subseason_doy = None
 
     errors, all_res_dict, eto_estimates = {}, {v: [] for v in COMPARISON_VARS}, None
 
@@ -108,6 +115,17 @@ def residuals(stations, station_data, gridded_data, station_residuals, all_resid
                         sta_res[var][month] = res.tolist()
                         all_res_dict[var].extend(res.tolist())
 
+                elif subseason:
+                    idx = [i for i in df.index if i.dayofyear in subseason_doy]
+                    df = df.loc[idx]
+                    residuals = df[s_var] - df[n_var]
+                    df[f'eto_{model}'] = gdf.loc[df.index, 'eto'].values
+                    eto_residuals = df['eto_station'] - df[f'eto_{model}']
+                    doy = [int(i.dayofyear) for i in df.index]
+
+                    sta_res[var] = [list(residuals), list(eto_residuals), doy]
+                    all_res_dict[var] += list(residuals)
+
                 else:
                     residuals = df[s_var] - df[n_var]
                     df[f'eto_{model}'] = gdf.loc[df.index, 'eto'].values
@@ -137,6 +155,12 @@ def residuals(stations, station_data, gridded_data, station_residuals, all_resid
         all_residuals = all_residuals.replace('.json', '_month.json')
         if comparison_out:
             comparison_out = comparison_out.replace('.json', '_month.json')
+
+    if subseason:
+        station_residuals = station_residuals.replace('.json', '_{}.json'.format(subseason))
+        all_residuals = all_residuals.replace('.json', '_{}.json'.format(subseason))
+        if comparison_out:
+            comparison_out = comparison_out.replace('.json', '_{}.json'.format(subseason))
 
     if location:
         station_residuals = station_residuals.replace('.json', '_{}.json'.format(location))
@@ -249,7 +273,7 @@ if __name__ == '__main__':
     comparison_js = os.path.join(d, 'weather_station_data_processing', 'comparison_data',
                                  'eto_all_{}.json'.format(model_))
 
-    residuals(station_meta, sta_data, grid_data, sta_res, res_json, model=model_, monthly=True, annual=False,
-              location=None, comparison_out=comparison_js)
+    residuals(station_meta, sta_data, grid_data, sta_res, res_json, model=model_, monthly=False, annual=False,
+              location=None, subseason='summer', comparison_out=comparison_js)
 
 # ========================= EOF ====================================================================

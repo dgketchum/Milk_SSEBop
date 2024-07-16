@@ -126,6 +126,9 @@ def plot_residuals_comparison_histograms(resids_file1, resids_file2, eto_file1, 
         if desc_2 == 'GridMET':
             x_labels = [r'NLDAS-2 ETo [mm day$^{-1}$]', r'GridMET ETo [mm day$^{-1}$]']
             keys = ['nldas2', 'gridmet']
+        elif desc_2 == 'Winter':
+            x_labels = [r'Summer (JJA) NLDAS-2 ETo [mm day$^{-1}$]', r'Winter (DJF) NLDAS-2 ETo [mm day$^{-1}$]']
+            keys = ['nldas2', 'nldas2']
         else:
             x_labels = [r'United States ETo [mm day$^{-1}$]', r'Canada ETo [mm day$^{-1}$]']
             keys = ['nldas2', 'nldas2']
@@ -520,6 +523,24 @@ if __name__ == '__main__':
     # plot_residuals_comparison_histograms(res_json, res_json2, eto_json, eto_json2, hist,
     #                                      desc_1='USA', desc_2='CAN', palette_idx=(2, 8))
 
+    # Summer Winter NLDAS-2 comparison ===============================================================
+    res_json = os.path.join(d, 'weather_station_data_processing', 'error_analysis',
+                            'all_residuals_nldas2_summer.json')
+
+    res_json2 = os.path.join(d, 'weather_station_data_processing', 'error_analysis',
+                             'all_residuals_nldas2_winter.json')
+
+    eto_json = os.path.join(d, 'weather_station_data_processing', 'comparison_data',
+                            'eto_all_nldas2_summer.json')
+
+    eto_json2 = os.path.join(d, 'weather_station_data_processing', 'comparison_data',
+                             'eto_all_nldas2_winter.json')
+
+    hist = os.path.join(d, 'weather_station_data_processing', 'error_analysis', 'joined_resid_hist')
+
+    plot_residuals_comparison_histograms(res_json, res_json2, eto_json, eto_json2, hist,
+                                         desc_1='Summer', desc_2='Winter', palette_idx=(7, 1))
+
     # ETo - Met Varaible scatter shows error correlation ==========================================
     model_ = 'nldas2'
     residuals = os.path.join(d, 'weather_station_data_processing', 'error_analysis',
@@ -548,7 +569,7 @@ if __name__ == '__main__':
                           'station_residuals_{}.json'.format(model_))
 
     whisker = os.path.join(d, 'weather_station_data_processing', 'error_analysis', 'box_whisker')
-    plot_monthly_residuals(monthly_, daily_, 'eto', whisker)
+    # plot_monthly_residuals(monthly_, daily_, 'eto', whisker)
 
     # Count pos/neg mean resid annually, no plot  ===============================================================
     sta_res = os.path.join(d, 'weather_station_data_processing', 'error_analysis',
