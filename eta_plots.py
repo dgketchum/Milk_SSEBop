@@ -118,7 +118,7 @@ def eta_scatter(results_file, fig_file):
 
     fig, axes = plt.subplots(2, 1, figsize=(8, 12))
     axes = axes.flatten()
-    sns.scatterplot(x='eta_obs', y='eta_ssebop', hue='fid', data=df, ax=axes[0], legend=True, style='fid',)
+    sns.scatterplot(x='eta_obs', y='eta_ssebop', hue='fid', data=df, ax=axes[0], legend=True, style='fid', )
     axes[0].set(xlabel=ETA_REMAP['eta_obs'])
     axes[0].set(ylabel=ETA_REMAP['eta_ssebop'])
 
@@ -153,6 +153,49 @@ def eta_scatter(results_file, fig_file):
     min_val = df[['eto_obs', 'eto_nldas']].min().min()
     max_val = df[['eto_obs', 'eto_nldas']].max().max()
     axes[1].plot([min_val, max_val], [min_val, max_val], '--', color='red')
+
+    plt.tight_layout()
+    # plt.show()
+    plt.savefig(fig_file)
+
+
+def eta_monthly_scatter(results_file, fig_file):
+    with open(results_file, 'r') as f:
+        results_dict = json.load(f)
+
+    all_data = []
+
+    for j, (fid, data) in enumerate(results_dict.items()):
+        df = pd.DataFrame({
+            'eta_obs': data['eta_obs'],
+            'eta_ssebop': data['eta_ssebop'],
+            'fid': fid,
+        })
+        all_data.append(df)
+
+    df = pd.concat(all_data)
+
+    r_squared_eta = stats.pearsonr(df['eta_obs'], df['eta_ssebop'])[0] ** 2
+    slope_eta, bias_eta, _, _, _ = stats.linregress(df['eta_obs'], df['eta_ssebop'])
+    rmse_eta = ((df['eta_obs'] - df['eta_ssebop']) ** 2).mean() ** 0.5
+
+    fig, ax = plt.subplots(1, 1, figsize=(8, 12))
+    sns.scatterplot(x='eta_obs', y='eta_ssebop', hue='fid', data=df, ax=ax, legend=True, style='fid', )
+    ax.set(xlabel=ETA_REMAP['eta_obs'])
+    ax.set(ylabel=ETA_REMAP['eta_ssebop'])
+
+    annotation_text_eta = (f'R²: {r_squared_eta:.2f}\nSlope: {slope_eta:.2f}\nBias: {bias_eta:.2f}'
+                           f'\nRMSE: {rmse_eta:.2f}\nn: {df.shape[0]}')
+
+    ax.text(0.95, 0.05, annotation_text_eta, transform=ax.transAxes, fontsize=10,
+            horizontalalignment='right', verticalalignment='bottom',
+            bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.5))
+    handles, labels = ax.get_legend_handles_labels()
+    ax.legend(handles, labels, title='Station', loc='upper right')
+
+    min_val = df[['eta_obs', 'eta_ssebop']].min().min()
+    max_val = df[['eta_obs', 'eta_ssebop']].max().max()
+    ax.plot([min_val, max_val], [min_val, max_val], '--', color='red')
 
     plt.tight_layout()
     # plt.show()
@@ -195,7 +238,11 @@ if __name__ == '__main__':
     error_json = os.path.join(d, 'validation', 'error_analysis', 'ec_comparison.json')
 
     out_fig = os.path.join(d, 'validation', 'plots', 'ec_comparison.png')
-    eta_scatter(error_json, out_fig)
+    # eta_scatter(error_json, out_fig)
+
+    error_json_month = os.path.join(d, 'validation', 'error_analysis', 'ec_comparison_monthly.json')
+    out_fig = os.path.join(d, 'validation', 'plots', 'ec_comparison_monthly.png')
+    eta_monthly_scatter(error_json_month, out_fig)
 
     extracts = os.path.join(d, 'results', 'et_extracts')
     ts_out = os.path.join(d, 'results', 'timeseries_plots')
