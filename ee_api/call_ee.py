@@ -267,8 +267,8 @@ if __name__ == '__main__':
     ee.Authenticate()
     ee.Initialize(project='ssebop-montana')
 
-    # export_gridded_data(SMM_MULTI, 'wudr', years=[i for i in range(1985, 2024)],
-    #                     description='smm', debug=False, join_col='OBJECTID', **{'target_classes': [0, 1, 2, 3]})
+    export_gridded_data(SMM_MULTI, 'wudr', years=[i for i in range(1985, 2024)],
+                        description='smm', debug=False, join_col='OBJECTID', **{'target_classes': [0, 1, 2, 3]})
 
     # masks = [None, 1, 2, 3]
     # for mask_ in masks:
@@ -276,6 +276,6 @@ if __name__ == '__main__':
     #                               description='smm', mask=mask_, resolution=30)
     #     break
 
-    c = '/media/research/IrrigationGIS/milk/ancillary/wrs2_study_area.csv'
-    count_images_used(c)
+    # c = '/media/research/IrrigationGIS/milk/ancillary/wrs2_study_area.csv'
+    # count_images_used(c)
 # ========================= EOF ================================================================================
