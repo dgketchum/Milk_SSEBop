@@ -1,12 +1,16 @@
 import json
 import os
-import pytz
 import warnings
 from calendar import month_abbr
 
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+import pytz
+import seaborn as sns
 from refet import Daily, calcs
+from scipy.stats import linregress
+from eto_error import _vpd, _rn, station_par_map
 
 warnings.simplefilter(action='ignore', category=FutureWarning)
 
@@ -65,6 +69,15 @@ def corrected_eto(stations, station_data, gridded_data, comparison_out, model='n
             gdf['mean_temp'] = (gdf['min_temp'] + gdf['max_temp']) * 0.5
             gdf = gdf[COMPARISON_VARS]
 
+            if apply_correction:
+                for j, m in enumerate(month_abbr[1:], start=1):
+                    idx = [i for i in gdf.index if i.month == j]
+                    print('\nMean {}, factor: {:.2f}, pre-correction: {:.2f}'.format(m, row[m],
+                                                                                     gdf.loc[idx, 'eto'].mean()))
+                    gdf.loc[idx, 'eto'] *= row[m]
+                    print('Mean {}, factor: {:.2f}, post-correction: {:.2f}'.format(m, row[m],
+                                                                                    gdf.loc[idx, 'eto'].mean()))
+
             s_var, n_var = 'eto_station', 'eto_{}'.format(model)
             df = pd.DataFrame(columns=[s_var], index=sdf.index, data=sdf['eto'].values)
             df['eto_station'] = sdf['eto']
@@ -89,75 +102,54 @@ def corrected_eto(stations, station_data, gridded_data, comparison_out, model='n
         json.dump(eto_estimates, dst, indent=4)
 
 
-def station_par_map(station_type):
-    if station_type == 'ec':
-        return {'index': 'SITE_ID',
-                'lat': 'LATITUDE',
-                'lon': 'LONGITUDE',
-                'elev': 'ELEVATION (METERS)',
-                'start': 'START DATE',
-                'end': 'END DATE'}
-    elif station_type == 'agri':
-        return {'index': 'id',
-                'lat': 'latitude',
-                'lon': 'longitude',
-                'elev': 'elev_m',
-                'start': 'record_start',
-                'end': 'record_end'}
-    else:
-        raise NotImplementedError
+def plot_corrected(eto_uncorr, eto_corr, plot_dir, palette_idx=(8, 2)):
+    palette = sns.color_palette('rocket', 10)
+    fig, axes = plt.subplots(1, 2, figsize=(16, 8), dpi=600)
 
+    x_labels = [r'Uncorrected NLDAS-2 ETo [mm day$^{-1}$]', r'Bias-Corrected NLDAS-2 ETo [mm day$^{-1}$]']
+    keys = ['nldas2', 'nldas2']
 
-def _vpd(r):
-    es = calcs._sat_vapor_pressure(r['mean_temp'])
-    vpd = es - r['ea']
-    return vpd[0]
+    with open(eto_uncorr, 'r') as f1, open(eto_corr, 'r') as f2:
+        eto_data1 = json.load(f1)
+        eto_data2 = json.load(f2)
 
+    for i, (eto_data, ax, label) in enumerate(zip([eto_data1, eto_data2], [axes[-2], axes[-1]], x_labels)):
+        x = eto_data['station']
+        y = eto_data[keys[i]]
+        rmse = np.sqrt(np.mean((np.array(x) - np.array(y))**2))
 
-def _rn(r, lat, elev, zw):
-    asce = Daily(tmin=r['min_temp'],
-                 tmax=r['max_temp'],
-                 rs=r['rs'],
-                 ea=r['ea'],
-                 uz=r['wind'],
-                 zw=zw,
-                 doy=r['doy'],
-                 elev=elev,
-                 lat=lat)
+        slope, intercept, r_value, _, _ = linregress(x, y)
+        r_squared = r_value ** 2
 
-    rn = asce.rn[0]
-    return rn
+        sns.scatterplot(x=x, y=y, color=palette[palette_idx[i]], s=2, alpha=.9, ax=ax)
 
+        stats_text = (f"n: {len(x)}\nR²: {r_squared:.2f}\nSlope: {slope:.2f}\nIntercept:"
+                      f" {intercept:.2f}\nRMSE: {rmse:.2f} [mm day$^{-1}$]")
 
-def check_file(lat, elev):
-    def calc_asce_params(r, zw):
-        asce = Daily(tmin=r['temperature_min'],
-                     tmax=r['temperature_max'],
-                     rs=r['shortwave_radiation'] * 0.0036,
-                     ea=r['ea'],
-                     uz=r['wind'],
-                     zw=zw,
-                     doy=r['doy'],
-                     elev=elev,
-                     lat=lat)
+        ax.text(
+            0.05, 0.95, stats_text,
+            transform=ax.transAxes,
+            verticalalignment='top',
+            bbox=dict(facecolor='white', alpha=0.7, edgecolor='black', linewidth=1),
+            fontsize=12
+        )
 
-        vpd = asce.vpd[0]
-        rn = asce.rn[0]
-        u2 = asce.u2[0]
-        mean_temp = asce.tmean[0]
-        eto = asce.eto()[0]
+        min_x = np.min(x)
+        max_x = np.max(x)
+        regression_line_y = slope * np.array([min_x, max_x]) + intercept
+        ax.plot([min_x, max_x], regression_line_y, linestyle='--', color=palette[palette_idx[i]])
+        ax.set_facecolor("white")
+        ax.set_xlabel("Station ETo [mm day$^{-1}$]")
+        ax.set_ylabel(label)
 
-        return vpd, rn, u2, mean_temp, eto
+        ax.plot([0.0, 12.0], [0.0, 12.0], 'k--', lw=1)
 
-    check_file = ('/media/research/IrrigationGIS/milk/weather_station_data_processing/'
-                  'NLDAS_data_at_stations/bfam_nldas_daily.csv')
-    dri = pd.read_csv(check_file, parse_dates=True, index_col='date')
-    dri['doy'] = [i.dayofyear for i in dri.index]
-    dri['ea'] = calcs._actual_vapor_pressure(pair=calcs._air_pressure(elev),
-                                             q=dri['specific_humidity'])
-    asce_params = dri.apply(calc_asce_params, zw=10, axis=1)
-    dri[['vpd_chk', 'rn_chk', 'u2_chk', 'tmean_chk', 'eto_chk']] = pd.DataFrame(asce_params.tolist(),
-                                                                                index=dri.index)
+    plt.tight_layout()
+
+    if not os.path.exists(plot_dir):
+        os.mkdir(plot_dir)
+    plot_path = os.path.join(plot_dir, f'corrected_comparison_scatter.png')
+    plt.savefig(plot_path)
 
 
 if __name__ == '__main__':
@@ -183,6 +175,16 @@ if __name__ == '__main__':
 
     comparison_js = os.path.join(d, 'weather_station_data_processing', 'comparison_data', 'eto_{}.json'.format(model_))
 
-    corrected_eto(station_meta, sta_data, grid_data, comparison_js, apply_correction=False)
+    # corrected_eto(station_meta, sta_data, grid_data, comparison_js, apply_correction=True)
+
+    eto_json = os.path.join(d, 'weather_station_data_processing', 'comparison_data',
+                            'eto_{}_uncorrected.json'.format(model_))
+
+    eto_json2 = os.path.join(d, 'weather_station_data_processing', 'comparison_data',
+                             'eto_{}_corrected.json'.format(model_))
+
+    plot = os.path.join(d, 'weather_station_data_processing', 'error_analysis', 'uncorr_vs_corrected_eto')
+
+    plot_corrected(eto_json, eto_json2, plot)
 
 # ========================= EOF ====================================================================
