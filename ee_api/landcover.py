@@ -195,11 +195,11 @@ def cdl_key():
         254: ('Dbl Crop Barley/Soybeans', 1),
 
         64: ('Shrubland', 2),
-        63: ('Forest', 2),
         62: ('Pasture/Grass', 2),
         152: ('Shrubland', 2),
         176: ('Grassland/Pasture', 2),
 
+        63: ('Forest', 3),
         141: ('Deciduous Forest', 3),
         142: ('Evergreen Forest', 3),
         143: ('Mixed Forest', 3),
