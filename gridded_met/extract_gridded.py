@@ -8,19 +8,26 @@ from pandarallel import pandarallel
 from refet import Daily, calcs, Hourly
 
 from eto_error import station_par_map
-from thredds import GridMet
+
+from gridded_met.thredds import GridMet
 
 PACIFIC = pytz.timezone('US/Pacific')
+MOUNTAIN = pytz.timezone('US/Mountain')
 
-RESAMPLE_MAP = {'rsds': 'sum',
-                'humidity': 'mean',
-                'min_temp': 'min',
-                'max_temp': 'max',
-                'wind': 'mean',
-                'ea': 'mean',
-                'rn': 'sum',
-                'vpd': 'mean',
-                'eto': 'sum'}
+pandarallel.initialize(nb_workers=4)
+
+NLDAS_RESAMPLE_MAP = {'rsds': 'sum',
+                      'rlds': 'sum',
+                      'psurf': 'mean',
+                      'humidity': 'mean',
+                      'min_temp': 'min',
+                      'max_temp': 'max',
+                      'wind': 'mean',
+                      'u2': 'mean',
+                      'ea': 'mean',
+                      'rn': 'sum',
+                      'vpd': 'mean',
+                      'eto': 'sum'}
 
 
 def extract_gridded(stations, out_dir, model='nldas2'):
@@ -48,8 +55,8 @@ def extract_gridded(stations, out_dir, model='nldas2'):
 
 
 def get_nldas(lon, lat, elev, start='1989-01-01', end='2023-12-31'):
-    df = nld.get_bycoords((lon, lat), start_date=start, end_date=end, source='grib',
-                          variables=['prcp', 'pet', 'temp', 'wind_u', 'wind_v', 'rlds', 'rsds', 'humidity'])
+    df = nld.get_bycoords((lon, lat), start_date=start, end_date=end, source='netcdf',
+                          variables=['prcp', 'pet', 'temp', 'wind_u', 'wind_v', 'rlds', 'rsds', 'humidity', 'psurf'])
 
     df = df.tz_convert(PACIFIC)
     wind_u = df['wind_u']
@@ -57,12 +64,14 @@ def get_nldas(lon, lat, elev, start='1989-01-01', end='2023-12-31'):
     df['wind'] = np.sqrt(wind_v ** 2 + wind_u ** 2)
 
     df['temp'] = df['temp'] - 273.15
+
     df['rsds'] *= 0.0036
+    df['rlds'] *= 0.0036
 
     df['doy'] = [i.dayofyear for i in df.index]
     df['hour'] = [i.hour for i in df.index]
 
-    df['ea'] = calcs._actual_vapor_pressure(pair=calcs._air_pressure(elev),
+    df['ea'] = calcs._actual_vapor_pressure(pair=df['psurf'] / 1000,
                                             q=df['humidity'])
 
     def calc_asce_params(r, zw, lat, lon, elev):
@@ -75,7 +84,8 @@ def get_nldas(lon, lat, elev, start='1989-01-01', end='2023-12-31'):
                       elev=elev,
                       lat=lat,
                       lon=lon,
-                      time=r['hour'])
+                      time=r['hour'],
+                      method='asce')
 
         vpd = asce.vpd[0]
         rn = asce.rn[0]
@@ -90,7 +100,7 @@ def get_nldas(lon, lat, elev, start='1989-01-01', end='2023-12-31'):
     df['max_temp'] = df['temp'].copy()
     df['min_temp'] = df['temp'].copy()
 
-    df = df.resample('D').agg(RESAMPLE_MAP)
+    df = df.resample('D').agg(NLDAS_RESAMPLE_MAP)
 
     df['year'] = [i.year for i in df.index]
     df['date_str'] = [i.strftime('%Y-%m-%d') for i in df.index]
@@ -133,7 +143,8 @@ def get_gridmet(lon, lat, elev, start='1989-01-01', end='2023-12-31'):
                      zw=zw,
                      doy=r['doy'],
                      elev=elev,
-                     lat=lat)
+                     lat=lat,
+                     method='asce')
 
         vpd = asce.vpd[0]
         rn = asce.rn[0]
