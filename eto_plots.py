@@ -502,8 +502,8 @@ if __name__ == '__main__':
 
     hist = os.path.join(d, 'weather_station_data_processing', 'error_analysis', 'joined_resid_hist')
 
-    # plot_residuals_comparison_histograms(res_json, res_json2, eto_json, eto_json2, hist,
-    #                                      desc_1='NLDAS-2', desc_2='GridMET', palette_idx=(4, 6))
+    plot_residuals_comparison_histograms(res_json, res_json2, eto_json, eto_json2, hist,
+                                         desc_1='NLDAS-2', desc_2='GridMET', palette_idx=(4, 6))
 
     # NDLAS-2 USA - CAN comparison ===============================================================
     res_json = os.path.join(d, 'weather_station_data_processing', 'error_analysis',
@@ -520,8 +520,8 @@ if __name__ == '__main__':
 
     hist = os.path.join(d, 'weather_station_data_processing', 'error_analysis', 'joined_resid_hist')
 
-    # plot_residuals_comparison_histograms(res_json, res_json2, eto_json, eto_json2, hist,
-    #                                      desc_1='USA', desc_2='CAN', palette_idx=(2, 8))
+    plot_residuals_comparison_histograms(res_json, res_json2, eto_json, eto_json2, hist,
+                                         desc_1='USA', desc_2='CAN', palette_idx=(2, 8))
 
     # Summer Winter NLDAS-2 comparison ===============================================================
     res_json = os.path.join(d, 'weather_station_data_processing', 'error_analysis',

@@ -175,7 +175,7 @@ if __name__ == '__main__':
 
     comparison_js = os.path.join(d, 'weather_station_data_processing', 'comparison_data', 'eto_{}.json'.format(model_))
 
-    # corrected_eto(station_meta, sta_data, grid_data, comparison_js, apply_correction=True)
+    corrected_eto(station_meta, sta_data, grid_data, comparison_js, apply_correction=True)
 
     eto_json = os.path.join(d, 'weather_station_data_processing', 'comparison_data',
                             'eto_{}_uncorrected.json'.format(model_))
