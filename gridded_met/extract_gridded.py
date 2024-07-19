@@ -23,11 +23,12 @@ NLDAS_RESAMPLE_MAP = {'rsds': 'sum',
                       'min_temp': 'min',
                       'max_temp': 'max',
                       'wind': 'mean',
-                      'u2': 'mean',
                       'ea': 'mean',
-                      'rn': 'sum',
-                      'vpd': 'mean',
-                      'eto': 'sum'}
+                      # 'rn': 'sum',
+                      # 'vpd': 'mean',
+                      # 'u2': 'mean',
+                      # 'eto': 'sum',
+                      }
 
 
 def extract_gridded(stations, out_dir, model='nldas2'):
@@ -68,24 +69,29 @@ def get_nldas(lon, lat, elev, start='1989-01-01', end='2023-12-31'):
     df['rsds'] *= 0.0036
     df['rlds'] *= 0.0036
 
-    df['doy'] = [i.dayofyear for i in df.index]
     df['hour'] = [i.hour for i in df.index]
 
     df['ea'] = calcs._actual_vapor_pressure(pair=df['psurf'] / 1000,
                                             q=df['humidity'])
 
+    df['max_temp'] = df['temp'].copy()
+    df['min_temp'] = df['temp'].copy()
+
+    df = df.resample('D').agg(NLDAS_RESAMPLE_MAP)
+
+    df['doy'] = [i.dayofyear for i in df.index]
+
     def calc_asce_params(r, zw, lat, lon, elev):
-        asce = Hourly(tmean=r['temp'],
-                      rs=r['rsds'],
-                      ea=r['ea'],
-                      uz=r['wind'],
-                      zw=zw,
-                      doy=r['doy'],
-                      elev=elev,
-                      lat=lat,
-                      lon=lon,
-                      time=r['hour'],
-                      method='asce')
+        asce = Daily(tmin=r['min_temp'],
+                     tmax=r['max_temp'],
+                     rs=r['rsds'],
+                     ea=r['ea'],
+                     uz=r['wind'],
+                     zw=zw,
+                     doy=r['doy'],
+                     elev=elev,
+                     lat=lat,
+                     method='asce')
 
         vpd = asce.vpd[0]
         rn = asce.rn[0]
@@ -97,11 +103,6 @@ def get_nldas(lon, lat, elev, start='1989-01-01', end='2023-12-31'):
     asce_params = df.parallel_apply(calc_asce_params, lat=lat, lon=lon, elev=elev, zw=10, axis=1)
     df[['vpd', 'rn', 'u2', 'eto']] = pd.DataFrame(asce_params.tolist(),
                                                   index=df.index)
-    df['max_temp'] = df['temp'].copy()
-    df['min_temp'] = df['temp'].copy()
-
-    df = df.resample('D').agg(NLDAS_RESAMPLE_MAP)
-
     df['year'] = [i.year for i in df.index]
     df['date_str'] = [i.strftime('%Y-%m-%d') for i in df.index]
     return df
