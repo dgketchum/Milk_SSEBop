@@ -178,6 +178,8 @@ def residuals(stations, station_data, gridded_data, station_residuals, all_resid
         with open(comparison_out, 'w') as dst:
             json.dump(eto_estimates, dst, indent=4)
 
+    print('Wrote', station_residuals)
+
 
 def station_par_map(station_type):
     if station_type == 'ec':
@@ -275,5 +277,26 @@ if __name__ == '__main__':
 
     residuals(station_meta, sta_data, grid_data, sta_res, res_json, model=model_, monthly=False, annual=False,
               location=None, subseason='summer', comparison_out=comparison_js)
+
+    residuals(station_meta, sta_data, grid_data, sta_res, res_json, model=model_, monthly=False, annual=False,
+              location=None, subseason='winter', comparison_out=comparison_js)
+
+    residuals(station_meta, sta_data, grid_data, sta_res, res_json, model='gridmet', monthly=False, annual=False,
+              location=None, subseason=None, comparison_out=comparison_js)
+
+    residuals(station_meta, sta_data, grid_data, sta_res, res_json, model=model_, monthly=False, annual=False,
+              location=None, subseason=None, comparison_out=comparison_js)
+
+    residuals(station_meta, sta_data, grid_data, sta_res, res_json, model=model_, monthly=False, annual=False,
+              location='south', subseason=None, comparison_out=comparison_js)
+
+    residuals(station_meta, sta_data, grid_data, sta_res, res_json, model=model_, monthly=False, annual=False,
+              location='north', subseason=None, comparison_out=comparison_js)
+
+    residuals(station_meta, sta_data, grid_data, sta_res, res_json, model=model_, monthly=True, annual=False,
+              location=None, subseason=None, comparison_out=comparison_js)
+
+    residuals(station_meta, sta_data, grid_data, sta_res, res_json, model=model_, monthly=False, annual=True,
+              location=None, subseason=None, comparison_out=comparison_js)
 
 # ========================= EOF ====================================================================
