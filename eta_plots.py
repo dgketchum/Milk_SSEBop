@@ -105,35 +105,43 @@ def eta_scatter(results_file, fig_file):
     with open(results_file, 'r') as f:
         results_dict = json.load(f)
 
-    all_data = []
+    all_data_eta = []
+    all_data_eto = []
 
     for j, (fid, data) in enumerate(results_dict.items()):
-        df = pd.DataFrame({
+        df_eta = pd.DataFrame({
             'eta_obs': data['eta_obs'],
             'eta_ssebop': data['eta_ssebop'],
+            'fid': fid,
+        })
+
+        df_eto = pd.DataFrame({
             'eto_obs': data['eto_obs'],
             'eto_nldas': data['eto_nldas'],
             'fid': fid,
         })
-        all_data.append(df)
 
-    df = pd.concat(all_data)
+        all_data_eta.append(df_eta)
+        all_data_eto.append(df_eto)
 
-    r_squared_eta = stats.pearsonr(df['eta_obs'], df['eta_ssebop'])[0] ** 2
-    r_squared_eto = stats.pearsonr(df['eto_obs'], df['eto_nldas'])[0] ** 2
-    slope_eta, bias_eta, _, _, _ = stats.linregress(df['eta_obs'], df['eta_ssebop'])
-    slope_eto, bias_eto, _, _, _ = stats.linregress(df['eto_obs'], df['eto_nldas'])
-    rmse_eta = ((df['eta_obs'] - df['eta_ssebop']) ** 2).mean() ** 0.5
-    rmse_eto = ((df['eto_obs'] - df['eto_nldas']) ** 2).mean() ** 0.5
+    df_eta = pd.concat(all_data_eta)
+    df_eto = pd.concat(all_data_eto)
+
+    r_squared_eta = stats.pearsonr(df_eta['eta_obs'], df_eta['eta_ssebop'])[0] ** 2
+    r_squared_eto = stats.pearsonr(df_eto['eto_obs'], df_eto['eto_nldas'])[0] ** 2
+    slope_eta, bias_eta, _, _, _ = stats.linregress(df_eta['eta_obs'], df_eta['eta_ssebop'])
+    slope_eto, bias_eto, _, _, _ = stats.linregress(df_eto['eto_obs'], df_eto['eto_nldas'])
+    rmse_eta = ((df_eta['eta_obs'] - df_eta['eta_ssebop']) ** 2).mean() ** 0.5
+    rmse_eto = ((df_eto['eto_obs'] - df_eto['eto_nldas']) ** 2).mean() ** 0.5
 
     fig, axes = plt.subplots(2, 1, figsize=(8, 12))
     axes = axes.flatten()
-    sns.scatterplot(x='eta_obs', y='eta_ssebop', hue='fid', data=df, ax=axes[0], legend=True, style='fid', )
+    sns.scatterplot(x='eta_obs', y='eta_ssebop', hue='fid', data=df_eta, ax=axes[0], legend=True, style='fid', )
     axes[0].set(xlabel=ETA_REMAP['eta_obs'])
     axes[0].set(ylabel=ETA_REMAP['eta_ssebop'])
 
     annotation_text_eta = (f'R²: {r_squared_eta:.2f}\nSlope: {slope_eta:.2f}\nBias: {bias_eta:.2f}'
-                           f'\nRMSE: {rmse_eta:.2f}\nn: {df.shape[0]}')
+                           f'\nRMSE: {rmse_eta:.2f}\nn: {df_eta.shape[0]}')
 
     axes[0].text(0.95, 0.05, annotation_text_eta, transform=axes[0].transAxes, fontsize=10,
                  horizontalalignment='right', verticalalignment='bottom',
@@ -141,17 +149,17 @@ def eta_scatter(results_file, fig_file):
     handles, labels = axes[0].get_legend_handles_labels()
     axes[0].legend(handles, labels, title='Station', loc='upper right')
 
-    min_val = df[['eta_obs', 'eta_ssebop']].min().min()
-    max_val = df[['eta_obs', 'eta_ssebop']].max().max()
+    min_val = df_eta[['eta_obs', 'eta_ssebop']].min().min()
+    max_val = df_eta[['eta_obs', 'eta_ssebop']].max().max()
     axes[0].plot([min_val, max_val], [min_val, max_val], '--', color='red')
 
-    sns.scatterplot(x='eto_obs', y='eto_nldas', hue='fid', data=df, ax=axes[1], legend=True, style='fid')
+    sns.scatterplot(x='eto_obs', y='eto_nldas', hue='fid', data=df_eto, ax=axes[1], legend=True, style='fid')
     axes[1].set(xlabel=ETA_REMAP['eto_obs'])
     axes[1].set(ylabel=ETA_REMAP['eto_nldas'])
 
     annotation_text_eto = (
         f'R²: {r_squared_eto:.2f}\nSlope: {slope_eto:.2f}\nBias: {bias_eto:.2f}'
-        f'\nRMSE: {rmse_eto:.2f}\nn: {df.shape[0]}')
+        f'\nRMSE: {rmse_eto:.2f}\nn: {df_eta.shape[0]}')
 
     axes[1].text(0.95, 0.05, annotation_text_eto, transform=axes[1].transAxes, fontsize=10,
                  horizontalalignment='right', verticalalignment='bottom',
@@ -160,8 +168,8 @@ def eta_scatter(results_file, fig_file):
     handles, labels = axes[1].get_legend_handles_labels()
     axes[1].legend(handles, labels, title='Station', loc='upper right')
 
-    min_val = df[['eto_obs', 'eto_nldas']].min().min()
-    max_val = df[['eto_obs', 'eto_nldas']].max().max()
+    min_val = df_eto[['eto_obs', 'eto_nldas']].min().min()
+    max_val = df_eto[['eto_obs', 'eto_nldas']].max().max()
     axes[1].plot([min_val, max_val], [min_val, max_val], '--', color='red')
 
     plt.tight_layout()
@@ -248,7 +256,7 @@ if __name__ == '__main__':
     error_json = os.path.join(d, 'validation', 'error_analysis', 'ec_comparison.json')
 
     out_fig = os.path.join(d, 'validation', 'plots', 'ec_comparison.png')
-    # eta_scatter(error_json, out_fig)
+    eta_scatter(error_json, out_fig)
 
     error_json_month = os.path.join(d, 'validation', 'error_analysis', 'ec_comparison_monthly.json')
     out_fig = os.path.join(d, 'validation', 'plots', 'ec_comparison_monthly.png')
