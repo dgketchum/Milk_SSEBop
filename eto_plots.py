@@ -58,7 +58,7 @@ LIMITS = {'vpd': 2.5,
 
 
 def plot_residuals_comparison_histograms(resids_file1, resids_file2, eto_file1, eto_file2, plot_dir,
-                                         palette_idx=(0, 1), desc_1='NLDAS-2', desc_2='GridMET'):
+                                         palette_idx=(0, 1), desc_1='NLDAS-2', desc_2='GridMET', extra_desc=None):
     try:
         with open(resids_file1, 'r') as f1, open(resids_file2, 'r') as f2:
             res_dct1 = json.load(f1)
@@ -165,7 +165,11 @@ def plot_residuals_comparison_histograms(resids_file1, resids_file2, eto_file1, 
 
         if not os.path.exists(plot_dir):
             os.mkdir(plot_dir)
-        plot_path = os.path.join(plot_dir, f'{desc_1}_{desc_2}_histogram.png')
+
+        if extra_desc:
+            plot_path = os.path.join(plot_dir, f'{desc_1}_{desc_2}_{extra_desc}_histogram.png')
+        else:
+            plot_path = os.path.join(plot_dir, f'{desc_1}_{desc_2}_histogram.png')
         plt.savefig(plot_path)
 
     except (FileNotFoundError, json.JSONDecodeError) as e:
@@ -489,21 +493,22 @@ if __name__ == '__main__':
 
     # GridMET - NLDAS-2 comparison ===============================================================
     res_json = os.path.join(d, 'weather_station_data_processing', 'error_analysis',
-                            'all_residuals_nldas2_south.json')
+                            'all_residuals_nldas2_summer_south.json')
 
     res_json2 = os.path.join(d, 'weather_station_data_processing', 'error_analysis',
-                             'all_residuals_gridmet.json')
+                             'all_residuals_gridmet_summer_south.json')
 
     eto_json = os.path.join(d, 'weather_station_data_processing', 'comparison_data',
-                            'eto_all_nldas2_south.json')
+                            'eto_all_nldas2_summer_south.json')
 
     eto_json2 = os.path.join(d, 'weather_station_data_processing', 'comparison_data',
-                             'eto_all_gridmet.json')
+                             'eto_all_gridmet_summer_south.json')
 
     hist = os.path.join(d, 'weather_station_data_processing', 'error_analysis', 'joined_resid_hist')
 
-    # plot_residuals_comparison_histograms(res_json, res_json2, eto_json, eto_json2, hist,
-    #                                      desc_1='NLDAS-2', desc_2='GridMET', palette_idx=(4, 6))
+    plot_residuals_comparison_histograms(res_json, res_json2, eto_json, eto_json2, hist,
+                                         desc_1='NLDAS-2', desc_2='GridMET', palette_idx=(4, 6),
+                                         extra_desc='summer')
 
     # NDLAS-2 USA - CAN comparison ===============================================================
     res_json = os.path.join(d, 'weather_station_data_processing', 'error_analysis',
