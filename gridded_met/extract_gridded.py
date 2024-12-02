@@ -54,7 +54,7 @@ def extract_gridded(stations, out_dir, model='nldas2'):
 
 
 def get_nldas(lon, lat, elev, start='1989-01-01', end='2023-12-31'):
-    df = nld.get_bycoords((lon, lat), start_date=start, end_date=end, source='grib',
+    df = nld.get_bycoords((lon, lat), start_date=start, end_date=end, source='netcdf',
                           variables=['temp', 'wind_u', 'wind_v', 'rlds', 'rsds', 'humidity'])
 
     df = df.tz_convert(PACIFIC)
