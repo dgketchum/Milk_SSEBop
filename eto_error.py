@@ -156,13 +156,19 @@ def residuals(stations, station_data, gridded_data, station_residuals, all_resid
         if comparison_out:
             comparison_out = comparison_out.replace('.json', '_month.json')
 
-    if subseason:
+    if subseason is not None and location is not None:
+        station_residuals = station_residuals.replace('.json', '_{}_{}.json'.format(subseason, location))
+        all_residuals = all_residuals.replace('.json', '_{}_{}.json'.format(subseason, location))
+        if comparison_out:
+            comparison_out = comparison_out.replace('.json', '_{}_{}.json'.format(subseason, location))
+
+    elif subseason:
         station_residuals = station_residuals.replace('.json', '_{}.json'.format(subseason))
         all_residuals = all_residuals.replace('.json', '_{}.json'.format(subseason))
         if comparison_out:
             comparison_out = comparison_out.replace('.json', '_{}.json'.format(subseason))
 
-    if location:
+    elif location:
         station_residuals = station_residuals.replace('.json', '_{}.json'.format(location))
         all_residuals = all_residuals.replace('.json', '_{}.json'.format(location))
         if comparison_out:
@@ -265,7 +271,7 @@ if __name__ == '__main__':
                                    'final_milk_river_metadata_nldas_eto_bias_ratios_long_term_mean.csv')
     sta_data = os.path.join(d, 'weather_station_data_processing', 'corrected_data')
 
-    model_ = 'nldas2'
+    model_ = 'gridmet'
     grid_data = os.path.join(d, 'weather_station_data_processing', 'gridded', model_)
     res_json = os.path.join(d, 'weather_station_data_processing', 'error_analysis',
                             'all_residuals_{}.json'.format(model_))
@@ -276,27 +282,27 @@ if __name__ == '__main__':
                                  'eto_all_{}.json'.format(model_))
 
     residuals(station_meta, sta_data, grid_data, sta_res, res_json, model=model_, monthly=False, annual=False,
-              location=None, subseason='summer', comparison_out=comparison_js)
+              location='south', subseason='summer', comparison_out=comparison_js)
 
-    residuals(station_meta, sta_data, grid_data, sta_res, res_json, model=model_, monthly=False, annual=False,
-              location=None, subseason='winter', comparison_out=comparison_js)
-
-    residuals(station_meta, sta_data, grid_data, sta_res, res_json, model='gridmet', monthly=False, annual=False,
-              location=None, subseason=None, comparison_out=comparison_js)
-
-    residuals(station_meta, sta_data, grid_data, sta_res, res_json, model=model_, monthly=False, annual=False,
-              location=None, subseason=None, comparison_out=comparison_js)
-
-    residuals(station_meta, sta_data, grid_data, sta_res, res_json, model=model_, monthly=False, annual=False,
-              location='south', subseason=None, comparison_out=comparison_js)
-
-    residuals(station_meta, sta_data, grid_data, sta_res, res_json, model=model_, monthly=False, annual=False,
-              location='north', subseason=None, comparison_out=comparison_js)
-
-    residuals(station_meta, sta_data, grid_data, sta_res, res_json, model=model_, monthly=True, annual=False,
-              location=None, subseason=None, comparison_out=comparison_js)
-
-    residuals(station_meta, sta_data, grid_data, sta_res, res_json, model=model_, monthly=False, annual=True,
-              location=None, subseason=None, comparison_out=comparison_js)
+    # residuals(station_meta, sta_data, grid_data, sta_res, res_json, model=model_, monthly=False, annual=False,
+    #           location=None, subseason='winter', comparison_out=comparison_js)
+    #
+    # residuals(station_meta, sta_data, grid_data, sta_res, res_json, model='gridmet', monthly=False, annual=False,
+    #           location=None, subseason=None, comparison_out=comparison_js)
+    #
+    # residuals(station_meta, sta_data, grid_data, sta_res, res_json, model=model_, monthly=False, annual=False,
+    #           location=None, subseason=None, comparison_out=comparison_js)
+    #
+    # residuals(station_meta, sta_data, grid_data, sta_res, res_json, model=model_, monthly=False, annual=False,
+    #           location='south', subseason=None, comparison_out=comparison_js)
+    #
+    # residuals(station_meta, sta_data, grid_data, sta_res, res_json, model=model_, monthly=False, annual=False,
+    #           location='north', subseason=None, comparison_out=comparison_js)
+    #
+    # residuals(station_meta, sta_data, grid_data, sta_res, res_json, model=model_, monthly=True, annual=False,
+    #           location=None, subseason=None, comparison_out=comparison_js)
+    #
+    # residuals(station_meta, sta_data, grid_data, sta_res, res_json, model=model_, monthly=False, annual=True,
+    #           location=None, subseason=None, comparison_out=comparison_js)
 
 # ========================= EOF ====================================================================
