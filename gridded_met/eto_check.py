@@ -3,6 +3,7 @@ import os
 from calendar import month_abbr
 from datetime import datetime
 
+from pandarallel import pandarallel
 import pandas as pd
 from refet import Daily, calcs, Hourly
 
@@ -25,7 +26,6 @@ def corrected_eto(stations, station_data, gridded_data, dri_data, model='nldas2'
             continue
 
         try:
-
             print('{} of {}: {}'.format(i + 1, station_list.shape[0], fid))
 
             sdf_file = os.path.join(station_data, '{}_output.xlsx'.format(fid))
@@ -123,14 +123,16 @@ if __name__ == '__main__':
         home = os.path.expanduser('~')
         d = os.path.join(home, 'data', 'IrrigationGIS', 'milk')
 
+    pandarallel.initialize(nb_workers=4)
+
     station_meta = os.path.join(d, 'bias_ratio_data_processing/ETo/'
                                    'final_milk_river_metadata_nldas_eto_bias_ratios_long_term_mean.csv')
 
-    sta_data = os.path.join(d, 'weather_station_data_processing', 'corrected_data')
+    sta_data = os.path.join(d, 'weather_station_data_update', 'corrected_data')
 
     model_ = 'nldas2'
-    grid_data = os.path.join(d, 'weather_station_data_processing', 'gridded', model_)
-    dri_data_ = os.path.join(d, 'weather_station_data_processing', 'NLDAS_data_at_stations')
+    grid_data = os.path.join(d, 'weather_station_data_update', 'gridded', model_)
+    dri_data_ = os.path.join(d, 'weather_station_data_update', 'NLDAS_data_at_stations')
 
     corrected_eto(station_meta, sta_data, grid_data, dri_data_, apply_correction=True)
 

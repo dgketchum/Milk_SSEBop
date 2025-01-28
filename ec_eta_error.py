@@ -1,16 +1,15 @@
+import calendar
 import json
 import os
 import warnings
-import calendar
-from datetime import datetime
 
 import numpy as np
 import pandas as pd
 import pytz
 from pandarallel import pandarallel
 from refet import Daily
-from sklearn.metrics import r2_score, root_mean_squared_error
 from scipy import stats
+from sklearn.metrics import r2_score, root_mean_squared_error
 
 from eto_error import station_par_map, RENAME_MAP
 from gridded_met.extract_gridded import get_nldas
@@ -27,11 +26,14 @@ FILL_VARS_MONTHLY = ['Monthly RMSE', 'Monthly R2', 'Monthly Slope', 'N Months']
 def donwload_ec_nldas(stations, monthly_rs_dir):
     kw = station_par_map('ec')
     station_list = pd.read_csv(stations, index_col='SITE_ID')
+
     for i, (fid, row) in enumerate(station_list.iterrows()):
         nl_ec_file = os.path.join(monthly_rs_dir, '{}_uncorr.csv'.format(fid))
-        nldas = get_nldas(lat=row[kw['lat']], lon=row[kw['lon']], elev=row[kw['elev']])
-        nldas.to_csv(nl_ec_file)
-        print(nl_ec_file)
+
+        if not os.path.exists(nl_ec_file):
+            nldas = get_nldas(lat=row[kw['lat']], lon=row[kw['lon']], elev=row[kw['elev']])
+            nldas.to_csv(nl_ec_file)
+            print(nl_ec_file)
 
 
 def ec_comparison(stations, station_data, daily_rs_dir, monthly_rs_dir, out_file, full_months):
