@@ -4,23 +4,20 @@ import warnings
 
 import matplotlib.dates as mdates
 import matplotlib.pyplot as plt
-import pandas as pd
 import numpy as np
+import pandas as pd
 import seaborn as sns
 from bokeh.layouts import column
 from bokeh.models import DatetimeTickFormatter
-from bokeh.palettes import Category10
 from bokeh.plotting import figure, output_file, save
 from scipy import stats
-
-from eto_plots import STR_MAP_SIMPLE
 
 warnings.simplefilter(action='ignore', category=FutureWarning)
 
 ETA_REMAP = {'eta_obs': 'Flux Tower Observed ET [mm day$^{-1}$]',
              'eta_ssebop': 'SSEBop ET [mm day$^{-1}$]',
-             'eto_obs': 'Flux Tower Observed ASCE Grass Reference ET [mm day$^{-1}$]',
-             'eto_nldas': 'NLDAS-2 ASCE Grass Reference ET [mm day$^{-1}$]'}
+             'eto_obs': 'Flux Tower Observed ETo [mm day$^{-1}$]',
+             'eto_nldas': 'NLDAS-2 Bias-Corrected ETo [mm day$^{-1}$]'}
 
 
 def eta_timeseries_volume(csv_dir, plot_dir, volume=True):
@@ -199,8 +196,8 @@ def eta_monthly_scatter(results_file, fig_file):
 
     fig, ax = plt.subplots(1, 1, figsize=(8, 12))
     sns.scatterplot(x='eta_obs', y='eta_ssebop', hue='fid', data=df, ax=ax, legend=True, style='fid', )
-    ax.set(xlabel=ETA_REMAP['eta_obs'])
-    ax.set(ylabel=ETA_REMAP['eta_ssebop'])
+    ax.set(xlabel=ETA_REMAP['eta_obs'].replace('day', 'month'))
+    ax.set(ylabel=ETA_REMAP['eta_ssebop'].replace('day', 'month'))
 
     annotation_text_eta = (f'R²: {r_squared_eta:.2f}\nSlope: {slope_eta:.2f}\nBias: {bias_eta:.2f}'
                            f'\nRMSE: {rmse_eta:.2f}\nn: {df.shape[0]}')
@@ -234,18 +231,23 @@ def flux_barplot(csv, out_file):
 
     plt.xlabel('Station', fontsize=24)
     plt.ylabel('Variance Accounted For', fontsize=24)
-    ax.set_xticks([])
+
+    ax.set_xticks(range(len(df.index)))
+    ax.set_xticklabels(df.index, rotation=45, ha='right', fontsize=18)
+
+    ax.set_xticks(range(len(df.index)), minor=True)
 
     for spine in ['top', 'right', 'bottom']:
         ax.spines[spine].set_visible(False)
 
     handles, labels = ax.get_legend_handles_labels()
     legend = ax.legend(handles, labels,
-                       loc='lower left', bbox_to_anchor=(0.1, 0),
+                       loc='upper left', bbox_to_anchor=(0.045, 0.2),
                        facecolor='white', fontsize=18)
+
     plt.tight_layout()
     plt.savefig(out_file)
-
+    # plt.show()
 
 if __name__ == '__main__':
 
@@ -256,7 +258,7 @@ if __name__ == '__main__':
     error_json = os.path.join(d, 'validation', 'error_analysis', 'ec_comparison.json')
 
     out_fig = os.path.join(d, 'validation', 'plots', 'ec_comparison.png')
-    eta_scatter(error_json, out_fig)
+    # eta_scatter(error_json, out_fig)
 
     error_json_month = os.path.join(d, 'validation', 'error_analysis', 'ec_comparison_monthly.json')
     out_fig = os.path.join(d, 'validation', 'plots', 'ec_comparison_monthly.png')

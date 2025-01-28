@@ -8,8 +8,8 @@ import numpy as np
 import pandas as pd
 import pytz
 import seaborn as sns
-from refet import Daily, calcs
 from scipy.stats import linregress
+
 from eto_error import _vpd, _rn, station_par_map
 
 warnings.simplefilter(action='ignore', category=FutureWarning)
@@ -108,12 +108,14 @@ def plot_corrected(eto_uncorr, eto_corr, plot_dir, palette_idx=(8, 2)):
 
     x_labels = [r'Uncorrected NLDAS-2 ETo [mm day$^{-1}$]', r'Bias-Corrected NLDAS-2 ETo [mm day$^{-1}$]']
     keys = ['nldas2', 'nldas2']
+    letters = ['A.', 'B.']
 
     with open(eto_uncorr, 'r') as f1, open(eto_corr, 'r') as f2:
         eto_data1 = json.load(f1)
         eto_data2 = json.load(f2)
 
-    for i, (eto_data, ax, label) in enumerate(zip([eto_data1, eto_data2], [axes[-2], axes[-1]], x_labels)):
+    for i, (eto_data, ax, label, letter) in enumerate(zip([eto_data1, eto_data2],
+                                                          [axes[-2], axes[-1]], x_labels, letters)):
         x = eto_data['station']
         y = eto_data[keys[i]]
         rmse = np.sqrt(np.mean((np.array(x) - np.array(y))**2))
@@ -127,28 +129,38 @@ def plot_corrected(eto_uncorr, eto_corr, plot_dir, palette_idx=(8, 2)):
                       f" {intercept:.2f}\nRMSE: {rmse:.2f} [mm day$^{-1}$]")
 
         ax.text(
-            0.05, 0.95, stats_text,
+            0.03, 0.93, stats_text,
             transform=ax.transAxes,
             verticalalignment='top',
             bbox=dict(facecolor='white', alpha=0.7, edgecolor='black', linewidth=1),
             fontsize=12
         )
 
+        ax.text(0.03, 0.97, letter,
+                transform=ax.transAxes,
+                verticalalignment='top',
+                fontsize=12)
+
         min_x = np.min(x)
         max_x = np.max(x)
         regression_line_y = slope * np.array([min_x, max_x]) + intercept
-        ax.plot([min_x, max_x], regression_line_y, linestyle='--', color=palette[palette_idx[i]])
+        ax.plot([min_x, max_x], regression_line_y, linestyle='--', color=palette[palette_idx[i]],
+                label='Line of Best Fit')
         ax.set_facecolor("white")
-        ax.set_xlabel("Station ETo [mm day$^{-1}$]")
-        ax.set_ylabel(label)
+        ax.set_xlabel("Station ETo [mm day$^{-1}$]", fontsize=12)
+        ax.set_ylabel(label, fontsize=12)
 
-        ax.plot([0.0, 12.0], [0.0, 12.0], 'k--', lw=1)
+        ax.plot([0.0, 12.0], [0.0, 12.0], 'k--', lw=1, label='1:1 Line')
+
+        ax.legend()
 
     plt.tight_layout()
 
     if not os.path.exists(plot_dir):
         os.mkdir(plot_dir)
     plot_path = os.path.join(plot_dir, f'corrected_comparison_scatter.png')
+
+    # plt.show()
     plt.savefig(plot_path)
 
 
@@ -175,7 +187,7 @@ if __name__ == '__main__':
 
     comparison_js = os.path.join(d, 'weather_station_data_processing', 'comparison_data', 'eto_{}.json'.format(model_))
 
-    corrected_eto(station_meta, sta_data, grid_data, comparison_js, apply_correction=True)
+    # corrected_eto(station_meta, sta_data, grid_data, comparison_js, apply_correction=True)
 
     eto_json = os.path.join(d, 'weather_station_data_processing', 'comparison_data',
                             'eto_{}_uncorrected.json'.format(model_))

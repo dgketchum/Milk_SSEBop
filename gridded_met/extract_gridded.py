@@ -53,7 +53,7 @@ def extract_gridded(stations, out_dir, model='nldas2'):
             print(model, fid, e)
 
 
-def get_nldas(lon, lat, elev, start='1989-01-01', end='2023-12-31'):
+def get_nldas(lon, lat, elev, start='1989-01-01', end='2024-12-31'):
     df = nld.get_bycoords((lon, lat), start_date=start, end_date=end, source='netcdf',
                           variables=['temp', 'wind_u', 'wind_v', 'rlds', 'rsds', 'humidity'])
 
@@ -106,7 +106,7 @@ def get_nldas(lon, lat, elev, start='1989-01-01', end='2023-12-31'):
     return df
 
 
-def get_gridmet(lon, lat, elev, start='1989-01-01', end='2023-12-31'):
+def get_gridmet(lon, lat, elev, start='1989-01-01', end='2024-12-31'):
     df, cols = pd.DataFrame(), gridmet_par_map()
 
     for thredds_var, variable in cols.items():
@@ -184,9 +184,9 @@ if __name__ == '__main__':
     station_meta = os.path.join(d, 'bias_ratio_data_processing/ETo/'
                                    'final_milk_river_metadata_nldas_eto_bias_ratios_long_term_mean.csv')
 
-    grid_data_dir = os.path.join(d, 'weather_station_data_processing', 'gridded')
+    grid_data_dir = os.path.join(d, 'weather_station_data_update', 'gridded')
 
     extract_gridded(station_meta, grid_data_dir, model='nldas2')
-    # extract_gridded(station_meta, grid_data_dir, model='gridmet')
+    extract_gridded(station_meta, grid_data_dir, model='gridmet')
 
 # ========================= EOF ====================================================================

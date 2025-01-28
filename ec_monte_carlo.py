@@ -29,7 +29,7 @@ def mc_timeseries_draw(json_file, station_meta, outfile, num_samples=1000):
 
     for j, (station, row) in enumerate(station_list.iterrows()):
 
-        # if station != 'US-MSR':
+        # if station != 'CA-Let':
         #     continue
 
         try:
@@ -40,8 +40,21 @@ def mc_timeseries_draw(json_file, station_meta, outfile, num_samples=1000):
 
         print('\n\n{} of {}: {}'.format(j + 1, station_list.shape[0], station))
 
-        df = pd.DataFrame().from_dict(errors)
-        df.index = df['dates']
+        try:
+            df = pd.DataFrame().from_dict(errors)
+            df.index = df['eta_dates']
+
+        except ValueError:
+            eto_dct = {k: v for k, v in errors.items() if 'eto' in k}
+            eto_dct = pd.DataFrame().from_dict(eto_dct)
+            eto_dct.index = [pd.to_datetime(dt) for dt in eto_dct['eto_dates']]
+
+            eta_dct = {k: v for k, v in errors.items() if 'eta' in k}
+            eta_dct = pd.DataFrame().from_dict(eta_dct)
+            eta_dct.index = [pd.to_datetime(dt) for dt in eta_dct['eta_dates']]
+
+            df = pd.concat([eta_dct, eto_dct], ignore_index=False, axis=1)
+
         df['eta_res'] = df['eta_obs'] - df['eta_ssebop']
         df['eto_res'] = df['eto_obs'] - df['eto_nldas']
 
@@ -66,7 +79,8 @@ def mc_timeseries_draw(json_file, station_meta, outfile, num_samples=1000):
         for var, col in zip(target_vars, target_cols):
 
             drawn_values, drawn_errors = [], []
-            residuals = df['{}_res'.format(var)].values
+            series = df['{}_res'.format(var)].dropna()
+            residuals = series.values
 
             a, b, loc, scale = st.johnsonsu.fit(residuals)
             dist = st.johnsonsu(a, b, loc=loc, scale=scale)
@@ -181,7 +195,7 @@ if __name__ == '__main__':
     error_json = os.path.join(d, 'validation', 'error_analysis', 'ec_comparison.json')
     var_json = os.path.join(d, 'validation', 'error_analysis', 'ec_variance_{}.json'.format(num_sample_))
 
-    # mc_timeseries_draw(error_json, sta, var_json, num_samples=num_sample_)
+    mc_timeseries_draw(error_json, sta, var_json, num_samples=num_sample_)
 
     decomp = os.path.join(d, 'validation', 'error_analysis', 'var_decomp_stations.csv')
     sta = os.path.join(d, 'eddy_covariance_data_processing', 'eddy_covariance_stations.csv')
