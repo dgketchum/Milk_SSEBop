@@ -25,9 +25,9 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 def mc_timeseries_draw(station_meta, gridded, outfile, residuals_dir, station_type='ec', num_samples=1000):
     kw = station_par_map(station_type)
 
-    results, metadata = {}, None
+    results, metadata, first = {}, None, True
 
-    station_list = pd.read_csv(station_meta, index_col=kw['index']).sample(n=3)
+    station_list = pd.read_csv(station_meta, index_col=kw['index'])
 
     for j, (station, row) in enumerate(station_list.iterrows()):
 
@@ -37,22 +37,12 @@ def mc_timeseries_draw(station_meta, gridded, outfile, residuals_dir, station_ty
 
         gdf = pd.read_csv(file_, parse_dates=True, index_col='date_str')
 
-        gdf = gdf.loc['2018-01-01': '2019-12-31']
-
         gdf['doy'] = [i.dayofyear for i in gdf.index]
         gdf['year'] = [i.year for i in gdf.index]
         gdf['mean_temp'] = (gdf['min_temp'] + gdf['max_temp']) / 2
         metvars = COMPARISON_VARS[:4]
-        gdf = gdf[metvars + ['eto', 'doy', 'year']]
 
-        doy_medians = gdf.groupby('doy')[metvars].median()
-        doy_medians = doy_medians.to_dict()
-
-        anomalies = gdf.copy()
-        for var in metvars:
-            anomalies[var] = gdf[var].subtract(gdf['doy'].map(doy_medians[var]))
-
-        if j == 0:
+        if first:
             metadata = Metadata.detect_from_dataframes(data={'met_data': gdf[metvars + ['year']]})
             metadata.update_column('year', sdtype='id')
             metadata.set_sequence_key('year')
@@ -62,16 +52,25 @@ def mc_timeseries_draw(station_meta, gridded, outfile, residuals_dir, station_ty
         if not os.path.isfile(resid_file):
             continue
 
-        # res_df = pd.read_csv(resid_file, parse_dates=True, index_col='date')
-        # res_df.index = [datetime.date(i.year, i.month, i.day) for i in res_df.index]
-        # res_df.dropna(how='any', axis=0, inplace=True)
-        # res_df = res_df.rename(columns={'u2': 'wind', 'tmean': 'mean_temp'})
-        # eto_arr = gdf.loc[res_df.index, 'eto'].values
+        res_df = pd.read_csv(resid_file, parse_dates=True, index_col='date')
+        res_df.index = pd.DatetimeIndex([datetime.date(i.year, i.month, i.day) for i in res_df.index])
+        res_df.dropna(how='any', axis=0, inplace=True)
+        res_df['year'] = [i.year for i in res_df.index]
+        res_df = res_df.rename(columns={'u2': 'wind', 'tmean': 'mean_temp'})
+
+        match_idx = [i for i in res_df.index if i in gdf.index]
+        eto_arr = gdf.loc[match_idx, 'eto'].values
+
+        gdf = gdf.loc[res_df.index[0]: res_df.index[-1]]
+
+        pct_anom = res_df.copy()
+        for var in metvars:
+            pct_anom[var] = 1 + (res_df.loc[match_idx, var] / gdf.loc[match_idx, var])
 
         result = {k: [] for k in metvars}
 
-        synthesizer = PARSynthesizer(metadata, cuda=True, verbose=True)
-        synthesizer.fit(anomalies[metvars + ['year']])
+        synthesizer = PARSynthesizer(metadata, cuda=True, verbose=True, epochs=556)
+        synthesizer.fit(pct_anom[metvars + ['year']])
 
         for i in range(num_samples):
 
@@ -79,11 +78,12 @@ def mc_timeseries_draw(station_meta, gridded, outfile, residuals_dir, station_ty
             synthetic_anomalies['doy'] = gdf['doy']
             synthetic_anomalies.index = gdf.index
 
-            sim_df = gdf.copy()
-            sim_df[metvars] += synthetic_anomalies[metvars]
+            for var in metvars:
 
-            if i == 0:
-                for var in metvars:
+                sim_df = gdf.copy()
+                sim_df[var] *= synthetic_anomalies[var]
+
+                if i == 0:
                     sim_db = sm.stats.durbin_watson(sim_df[var])
                     obs_db = sm.stats.durbin_watson(gdf[var])
                     print('Durbin-Watson {}: obs {:.2f}, sim {:.2f}'.format(var, obs_db, sim_db))
@@ -91,9 +91,12 @@ def mc_timeseries_draw(station_meta, gridded, outfile, residuals_dir, station_ty
                     gdf_mean, sim_mean = gdf[var].mean(), sim_df[var].mean()
                     print('Mean Residuals {}: obs {:.2f}, sim {:.2f}'.format(var, gdf_mean, sim_mean))
 
-            for var in metvars:
-                eto_sim = perturbed_nldas.parallel_apply(calc_eto, mod_var=var,
-                                                         mod_vals=perturbed_nldas[var].values, axis=1).values
+                eto_sim = sim_df.apply(calc_eto, mod_var=var, elev=row[kw['elev']], lat=row[kw['lat']],
+                                                mod_vals=sim_df[var].values, axis=1).values
+
+                eto_sim = pd.Series(data=eto_sim, index=gdf.index)
+                eto_sim = eto_sim.loc[match_idx].values
+
                 res = eto_sim - eto_arr
                 variance = np.var(res, ddof=1)
                 result[var].append((res.mean(), variance))
@@ -184,7 +187,7 @@ def variance_decomposition(sim_results, station_meta, decomp_out, station_type='
     pprint('summary variance decomposition: {}'.format(decomp))
 
 
-def calc_eto(r, mod_var, mod_vals):
+def calc_eto(r, mod_var, mod_vals, elev, lat):
     # modify the error-perturbed values with setattr
     asce = Daily(
         tmin=r['min_temp'],
@@ -194,8 +197,8 @@ def calc_eto(r, mod_var, mod_vals):
         uz=r['wind'],
         zw=10.0,
         doy=r['doy'],
-        elev=row[kw['elev']],
-        lat=row[kw['lat']])
+        elev=elev,
+        lat=lat)
 
     setattr(asce, mod_var, mod_vals)
 
@@ -218,7 +221,7 @@ if __name__ == '__main__':
     sta_res = os.path.join(d, 'weather_station_data_processing', 'error_analysis',
                            'station_residuals_{}.json'.format(model_))
 
-    pandarallel.initialize(nb_workers=10)
+    # pandarallel.initialize(nb_workers=10)
 
     num_sampl_ = 100
     variance_json = os.path.join(d, 'weather_station_data_processing', 'error_analysis',
