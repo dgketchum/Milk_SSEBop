@@ -4,12 +4,10 @@ import os
 import warnings
 from pprint import pprint
 
-import torch
-
 import numpy as np
 import pandas as pd
 import statsmodels.api as sm
-from pandarallel import pandarallel
+import torch
 from refet import Daily
 from sdv.metadata import Metadata
 from sdv.sequential import PARSynthesizer
@@ -22,7 +20,8 @@ warnings.simplefilter(action='ignore', category=FutureWarning)
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
-def mc_timeseries_draw(station_meta, gridded, outfile, residuals_dir, station_type='ec', num_samples=1000):
+def mc_timeseries_draw(station_meta, gridded, outdir, residuals_dir, station_type='ec', num_samples=1000,
+                       overwrite=False):
     kw = station_par_map(station_type)
 
     results, metadata, first = {}, None, True
@@ -30,6 +29,12 @@ def mc_timeseries_draw(station_meta, gridded, outfile, residuals_dir, station_ty
     station_list = pd.read_csv(station_meta, index_col=kw['index'])
 
     for j, (station, row) in enumerate(station_list.iterrows()):
+
+        outfile = os.path.join(outdir, f'eto_variance_{num_samples}_{station}.json')
+
+        if os.path.exists(outfile) and not overwrite:
+            print(f'{station} file exists, skipping')
+            continue
 
         print('\n{} of {}: {}'.format(j + 1, station_list.shape[0], station))
 
@@ -42,11 +47,15 @@ def mc_timeseries_draw(station_meta, gridded, outfile, residuals_dir, station_ty
         gdf['mean_temp'] = (gdf['min_temp'] + gdf['max_temp']) / 2
         metvars = COMPARISON_VARS[:4]
 
-        if first:
-            metadata = Metadata.detect_from_dataframes(data={'met_data': gdf[metvars + ['year']]})
-            metadata.update_column('year', sdtype='id')
-            metadata.set_sequence_key('year')
-            metadata.validate()
+        metadata = Metadata.detect_from_dataframes(data={'met_data': gdf[metvars + ['year']]})
+        metadata.update_column('year', sdtype='id')
+        metadata.set_sequence_key('year')
+        metadata.validate()
+
+        metadata_file = os.path.join(outdir, f'metadata_{station}.json')
+        if os.path.exists(metadata_file):
+            os.remove(metadata_file)
+        metadata.save_to_json(metadata_file)
 
         resid_file = os.path.join(residuals_dir, 'res_{}.csv'.format(station))
         if not os.path.isfile(resid_file):
@@ -68,8 +77,12 @@ def mc_timeseries_draw(station_meta, gridded, outfile, residuals_dir, station_ty
             pct_anom[var] = 1 + (res_df.loc[match_idx, var] / gdf.loc[match_idx, var])
 
         result = {k: [] for k in metvars}
+        result['stats'] = {var: {} for var in metvars}
 
-        synthesizer = PARSynthesizer(metadata, cuda=True, verbose=True, epochs=556)
+        pct_anom = pct_anom.replace([np.inf, -np.inf], np.nan)
+        pct_anom = pct_anom.dropna()
+
+        synthesizer = PARSynthesizer(metadata, cuda=True, verbose=True, epochs=128, enforce_min_max_values=True)
         synthesizer.fit(pct_anom[metvars + ['year']])
 
         for i in range(num_samples):
@@ -83,16 +96,23 @@ def mc_timeseries_draw(station_meta, gridded, outfile, residuals_dir, station_ty
                 sim_df = gdf.copy()
                 sim_df[var] *= synthetic_anomalies[var]
 
-                if i == 0:
-                    sim_db = sm.stats.durbin_watson(sim_df[var])
-                    obs_db = sm.stats.durbin_watson(gdf[var])
-                    print('Durbin-Watson {}: obs {:.2f}, sim {:.2f}'.format(var, obs_db, sim_db))
+                sim_dw = sm.stats.durbin_watson(sim_df[var])
+                obs_dw = sm.stats.durbin_watson(gdf[var])
 
-                    gdf_mean, sim_mean = gdf[var].mean(), sim_df[var].mean()
+                gdf_mean, sim_mean = gdf[var].mean(), sim_df[var].mean()
+
+                if i == 0:
+                    print('Durbin-Watson {}: obs {:.2f}, sim {:.2f}'.format(var, obs_dw, sim_dw))
                     print('Mean Residuals {}: obs {:.2f}, sim {:.2f}'.format(var, gdf_mean, sim_mean))
+                    result['stats'][var] = {'obs_dw': [], 'sim_dw': [], 'obs_mean_res': [], 'sim_mean_res': []}
+
+                result['stats'][var]['obs_dw'].append(obs_dw)
+                result['stats'][var]['sim_dw'].append(sim_dw)
+                result['stats'][var]['obs_mean_res'].append(gdf_mean)
+                result['stats'][var]['sim_mean_res'].append(sim_mean)
 
                 eto_sim = sim_df.apply(calc_eto, mod_var=var, elev=row[kw['elev']], lat=row[kw['lat']],
-                                                mod_vals=sim_df[var].values, axis=1).values
+                                       mod_vals=sim_df[var].values, axis=1).values
 
                 eto_sim = pd.Series(data=eto_sim, index=gdf.index)
                 eto_sim = eto_sim.loc[match_idx].values
@@ -105,10 +125,8 @@ def mc_timeseries_draw(station_meta, gridded, outfile, residuals_dir, station_ty
                 if i == 0:
                     print('Mean ETo residual for {}: {:.2f}\n'.format(var, mean_))
 
-        results[station] = result
-
-    with open(outfile, 'w') as f:
-        json.dump(results, f, indent=4)
+        with open(outfile, 'w') as f:
+            json.dump(result, f, indent=4)
 
 
 def cross_autocorrelation_multivariate(df, lags=10, demean=True):
@@ -224,14 +242,12 @@ if __name__ == '__main__':
     # pandarallel.initialize(nb_workers=10)
 
     num_sampl_ = 100
-    variance_json = os.path.join(d, 'weather_station_data_processing', 'error_analysis',
-                                 'eto_variance_{}.json'.format(num_sampl_))
-
+    variance_json = os.path.join(d, 'weather_station_data_processing', 'error_analysis', 'mc_par_variance')
     res_file_dir = os.path.join(d, 'weather_station_data_processing', 'comparison_data')
     mc_timeseries_draw(sta, grid_data, variance_json, res_file_dir, station_type='agri',
                        num_samples=num_sampl_)
 
-    decomp = os.path.join(d, 'weather_station_data_processing', 'error_analysis', 'var_decomp_stations_notprop.csv')
+    decomp = os.path.join(d, 'weather_station_data_processing', 'error_analysis', 'var_decomp')
     variance_decomposition(variance_json, sta, decomp, station_type='agri')
 
 # ========================= EOF ====================================================================
