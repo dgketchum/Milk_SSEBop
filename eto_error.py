@@ -40,7 +40,9 @@ PACIFIC = pytz.timezone('US/Pacific')
 
 
 def residuals(stations, station_data, gridded_data, station_residuals, all_residuals, model='nldas2',
-              comparison_out=None, location=None, monthly=False, annual=False, subseason=None):
+              comparison_out=None, location=None, monthly=False, annual=False, subseason=None,
+              residual_csv=None):
+
     kw = station_par_map('agri')
     station_list = pd.read_csv(stations, index_col=kw['index'])
 
@@ -66,6 +68,9 @@ def residuals(stations, station_data, gridded_data, station_residuals, all_resid
         eto_estimates = {'station': [], model: []}
 
     for i, (fid, row) in enumerate(station_list.iterrows()):
+
+        # if fid not in ['bftm', 'comt', 'bfam']:
+        #     continue
 
         try:
 
@@ -140,6 +145,13 @@ def residuals(stations, station_data, gridded_data, station_residuals, all_resid
                 eto_estimates['station'].extend(df['eto_station'].to_list())
 
             errors[fid] = sta_res.copy()
+            if residual_csv:
+                res_csv = os.path.join(residual_csv, f'res_{fid}.csv')
+                res_dct = {k: v[0] for k, v in sta_res.items()}
+                res_df = pd.DataFrame().from_dict(res_dct)
+                res_df.index = df.index
+                res_df['date'] = res_df.index
+                res_df.to_csv(res_csv)
 
         except Exception as e:
             print('Exception raised on {}, {}'.format(fid, e))
@@ -271,24 +283,24 @@ if __name__ == '__main__':
                                    'final_milk_river_metadata_nldas_eto_bias_ratios_long_term_mean.csv')
     sta_data = os.path.join(d, 'weather_station_data_processing', 'corrected_data')
 
-    model_ = 'gridmet'
+    model_ = 'nldas2'
     grid_data = os.path.join(d, 'weather_station_data_processing', 'gridded', model_)
     res_json = os.path.join(d, 'weather_station_data_processing', 'error_analysis',
                             'all_residuals_{}.json'.format(model_))
     sta_res = os.path.join(d, 'weather_station_data_processing', 'error_analysis',
                            'station_residuals_{}.json'.format(model_))
 
-    comparison_js = os.path.join(d, 'weather_station_data_processing', 'comparison_data',
-                                 'eto_all_{}.json'.format(model_))
+    comp_data = os.path.join(d, 'weather_station_data_processing', 'comparison_data')
+    comparison_js = os.path.join(comp_data, 'eto_all_{}.json'.format(model_))
 
-    residuals(station_meta, sta_data, grid_data, sta_res, res_json, model=model_, monthly=False, annual=False,
-              location='south', subseason='summer', comparison_out=comparison_js)
+    # residuals(station_meta, sta_data, grid_data, sta_res, res_json, model=model_, monthly=False, annual=False,
+    #           location='south', subseason='summer', comparison_out=comparison_js)
 
     # residuals(station_meta, sta_data, grid_data, sta_res, res_json, model=model_, monthly=False, annual=False,
     #           location=None, subseason='winter', comparison_out=comparison_js)
     #
-    # residuals(station_meta, sta_data, grid_data, sta_res, res_json, model='gridmet', monthly=False, annual=False,
-    #           location=None, subseason=None, comparison_out=comparison_js)
+    residuals(station_meta, sta_data, grid_data, sta_res, res_json, model=model_, monthly=False, annual=False,
+              location=None, subseason=None, comparison_out=comparison_js, residual_csv=comp_data)
     #
     # residuals(station_meta, sta_data, grid_data, sta_res, res_json, model=model_, monthly=False, annual=False,
     #           location=None, subseason=None, comparison_out=comparison_js)
