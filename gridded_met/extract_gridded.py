@@ -184,9 +184,9 @@ if __name__ == '__main__':
     station_meta = os.path.join(d, 'bias_ratio_data_processing/ETo/'
                                    'final_milk_river_metadata_nldas_eto_bias_ratios_long_term_mean.csv')
 
-    grid_data_dir = os.path.join(d, 'weather_station_data_update', 'gridded')
+    grid_data_dir = os.path.join(d, 'weather_station_data_processing', 'gridded')
 
     extract_gridded(station_meta, grid_data_dir, model='nldas2')
-    extract_gridded(station_meta, grid_data_dir, model='gridmet')
+    # extract_gridded(station_meta, grid_data_dir, model='gridmet')
 
 # ========================= EOF ====================================================================
