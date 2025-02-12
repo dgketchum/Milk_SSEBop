@@ -587,10 +587,10 @@ if __name__ == '__main__':
     # plot_resid_corr_heatmap(res_json, gridded, heat)
 
     # Varince Decomposition Barplot  ===============================================================
-    decomp = os.path.join(d, 'weather_station_data_processing', 'error_analysis', 'var_decomp_stations_tprop.csv')
+    decomp = os.path.join(d, 'weather_station_data_processing', 'error_analysis', 'var_decomp_par.csv')
     decomp_plt = os.path.join(d, 'weather_station_data_processing', 'error_analysis',
-                              'decomp_barplot', 'var_decomp_stations_notprop.png')
-    # station_barplot(decomp, decomp_plt)
+                              'decomp_barplot', 'var_decomp_stations_par.png')
+    station_barplot(decomp, decomp_plt)
 
     # Monthly Station Residual, median daily  ===============================================================
     monthly_ = os.path.join(d, 'weather_station_data_processing', 'error_analysis',
