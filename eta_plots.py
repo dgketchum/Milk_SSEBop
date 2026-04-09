@@ -74,15 +74,15 @@ def eta_timeseries_volume(csv_dir, plot_dir, volume=True):
     for lc, key in zip(['Cropland', 'Grass/Shrubland', 'Forest'], [1, 2, 3]):
         ax.plot(df.index, df['et_{}'.format(key)].values, color=colors[key], label=lc)
 
-    plt.ylabel('ET km$^3$')
+    plt.ylabel('ETa km$^3$')
     plt.xlabel('Time')
     ax.legend(loc='upper left')
-    plt.title('Milk - St Mary Evapotranspiration')
+    plt.title('St. Mary - Milk River Watershed Evapotranspiration')
     plt.tight_layout()
     _fig_file = os.path.join(plot_dir, 'timeseries_crop_et.png')
     plt.savefig(_fig_file)
 
-    p = figure(title='Milk - St Mary Evapotranspiration', x_axis_label='Time', y_axis_label='ET km$^3$',
+    p = figure(title='St. Mary - Milk River Watershed Evapotranspiration', x_axis_label='Time', y_axis_label='ET km$^3$',
                width=3600, height=800,
                x_axis_type='datetime')
 
@@ -90,10 +90,10 @@ def eta_timeseries_volume(csv_dir, plot_dir, volume=True):
         p.line(df.index, df['et_{}'.format(key)].values, line_width=1.0, color=colors[key], legend_label=lc)
 
     p.legend.location = 'top_left'
-    p.xaxis.formatter = DatetimeTickFormatter(days=['%Y-%m-%d'], months=['%Y-%m-%d'], years=['%Y-%m-%d'])
+    p.xaxis.formatter = DatetimeTickFormatter(days='%Y-%m-%d', months='%Y-%m-%d', years='%Y-%m-%d')
     plots.append(p)
 
-    _fig_file = os.path.join(plot_dir, 'timeseries_crop_et.html')
+    _fig_file = os.path.join(plot_dir, 'timeseries_crop_et_07JUL2025.html')
     output_file(_fig_file)
     save(column(*plots))
 
@@ -249,6 +249,7 @@ def flux_barplot(csv, out_file):
     plt.savefig(out_file)
     # plt.show()
 
+
 if __name__ == '__main__':
 
     d = '/media/research/IrrigationGIS/milk'
@@ -257,7 +258,7 @@ if __name__ == '__main__':
 
     error_json = os.path.join(d, 'validation', 'error_analysis', 'ec_comparison.json')
 
-    out_fig = os.path.join(d, 'validation', 'plots', 'ec_comparison.png')
+    out_fig = os.path.join(d, 'validation', 'plots', 'ec_comparison_usfpe.png')
     # eta_scatter(error_json, out_fig)
 
     error_json_month = os.path.join(d, 'validation', 'error_analysis', 'ec_comparison_monthly.json')

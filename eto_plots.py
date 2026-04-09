@@ -64,7 +64,7 @@ def plot_eto_histogram(res_data, plot_dir, desc='NLDAS-2'):
 
     resids = res_dct.get('eto', [])
 
-    plt.figure(figsize=(14, 7))
+    plt.figure(figsize=(3.5, 2))
 
     ax = plt.subplot()
 
@@ -85,7 +85,7 @@ def plot_eto_histogram(res_data, plot_dir, desc='NLDAS-2'):
     stats_text = '\n'.join([f'{label} = {value}' for label, value in data])
 
     ax.text(0.05, 0.8, stats_text, transform=ax.transAxes,
-            verticalalignment='top', fontsize=14)
+            verticalalignment='top', fontsize=12)
 
     plt.xlabel('ETo Residuals [mm day$^{-1}$]\n(Observed minus NLDAS-2)')
     plt.ylabel('Frequency')
@@ -97,6 +97,7 @@ def plot_eto_histogram(res_data, plot_dir, desc='NLDAS-2'):
 
     plot_path = os.path.join(plot_dir, f'{desc}_eto_histogram.png')
     plt.savefig(plot_path)
+    print(f'saved {plot_path}')
     # plt.show()
 
 
@@ -513,7 +514,7 @@ if __name__ == '__main__':
 
     hist = os.path.join(d, 'weather_station_data_processing', 'error_analysis', 'residual_histograms')
 
-    # plot_eto_histogram(res_json, hist, desc='NLDAS-2')
+    plot_eto_histogram(res_json, hist, desc='NLDAS-2')
 
     # GridMET - NLDAS-2 comparison ===============================================================
     res_json = os.path.join(d, 'weather_station_data_processing', 'error_analysis',
@@ -530,9 +531,9 @@ if __name__ == '__main__':
 
     hist = os.path.join(d, 'weather_station_data_processing', 'error_analysis', 'joined_resid_hist')
 
-    # plot_residuals_comparison_histograms(res_json, res_json2, eto_json, eto_json2, hist,
-    #                                      desc_1='NLDAS-2', desc_2='GridMET', palette_idx=(4, 6),
-    #                                      baseline_estimate='Gridded', extra_desc=None)
+    plot_residuals_comparison_histograms(res_json, res_json2, eto_json, eto_json2, hist,
+                                         desc_1='NLDAS-2', desc_2='GridMET', palette_idx=(2, 6),
+                                         baseline_estimate='Gridded', extra_desc=None)
 
     # NDLAS-2 USA - CAN comparison ===============================================================
     res_json = os.path.join(d, 'weather_station_data_processing', 'error_analysis',
@@ -550,7 +551,7 @@ if __name__ == '__main__':
     hist = os.path.join(d, 'weather_station_data_processing', 'error_analysis', 'joined_resid_hist')
 
     # plot_residuals_comparison_histograms(res_json, res_json2, eto_json, eto_json2, hist,
-    #                                      desc_1='USA', desc_2='CAN', palette_idx=(2, 8),
+    #                                      desc_1='USA', desc_2='CAN', palette_idx=(3, 5),
     #                                      baseline_estimate='NLDAS-2')
 
     # Summer Winter NLDAS-2 comparison ===============================================================
@@ -587,9 +588,9 @@ if __name__ == '__main__':
     # plot_resid_corr_heatmap(res_json, gridded, heat)
 
     # Varince Decomposition Barplot  ===============================================================
-    decomp = os.path.join(d, 'weather_station_data_processing', 'error_analysis', 'var_decomp_stations_tprop.csv')
+    decomp = os.path.join(d, 'weather_station_data_processing', 'error_analysis', 'var_decomp_par.csv')
     decomp_plt = os.path.join(d, 'weather_station_data_processing', 'error_analysis',
-                              'decomp_barplot', 'var_decomp_stations_notprop.png')
+                              'decomp_barplot', 'var_decomp_stations_par.png')
     # station_barplot(decomp, decomp_plt)
 
     # Monthly Station Residual, median daily  ===============================================================

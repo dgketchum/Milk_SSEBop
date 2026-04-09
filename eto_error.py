@@ -6,6 +6,7 @@ from calendar import month_abbr
 
 import numpy as np
 import pandas as pd
+from sklearn.metrics import r2_score
 from refet import Daily, calcs
 
 warnings.simplefilter(action='ignore', category=FutureWarning)
@@ -20,7 +21,9 @@ VAR_MAP = {'rs': 'Rs (w/m2)',
 
 RENAME_MAP = {v: k for k, v in VAR_MAP.items()}
 
-COMPARISON_VARS = ['vpd', 'rn', 'mean_temp', 'wind', 'eto']
+COMPARISON_VARS = ['eto', 'rn', 'mean_temp', 'wind', 'vpd']
+
+METVARS = ['vpd', 'rn', 'mean_temp', 'wind']
 
 STR_MAP = {
     'rn': r'Net Radiation [MJ m$^{-2}$ d$^{-1}$]',
@@ -40,7 +43,9 @@ PACIFIC = pytz.timezone('US/Pacific')
 
 
 def residuals(stations, station_data, gridded_data, station_residuals, all_residuals, model='nldas2',
-              comparison_out=None, location=None, monthly=False, annual=False, subseason=None):
+              comparison_out=None, location=None, monthly=False, annual=False, subseason=None,
+              residual_csv=None):
+
     kw = station_par_map('agri')
     station_list = pd.read_csv(stations, index_col=kw['index'])
 
@@ -61,11 +66,18 @@ def residuals(stations, station_data, gridded_data, station_residuals, all_resid
         subseason_doy = None
 
     errors, all_res_dict, eto_estimates = {}, {v: [] for v in COMPARISON_VARS}, None
+    if monthly:
+        month_res = {v: {month: [] for month in range(1, 13)} for v in COMPARISON_VARS}
+    else:
+        month_res = None
 
     if comparison_out:
         eto_estimates = {'station': [], model: []}
 
     for i, (fid, row) in enumerate(station_list.iterrows()):
+
+        # if fid not in ['bftm', 'comt', 'bfam']:
+        #     continue
 
         try:
 
@@ -74,7 +86,7 @@ def residuals(stations, station_data, gridded_data, station_residuals, all_resid
             else:
                 sta_res = {v: [] for v in COMPARISON_VARS}
 
-            print('{} of {}: {}'.format(i + 1, station_list.shape[0], fid))
+            print('\n{} of {}: {}'.format(i + 1, station_list.shape[0], fid))
 
             sdf_file = os.path.join(station_data, '{}_output.xlsx'.format(fid))
             sdf = pd.read_excel(sdf_file, parse_dates=True, index_col='date')
@@ -114,6 +126,7 @@ def residuals(stations, station_data, gridded_data, station_residuals, all_resid
                         res = df.loc[df['month'] == month, s_var] - df.loc[df['month'] == month, n_var]
                         sta_res[var][month] = res.tolist()
                         all_res_dict[var].extend(res.tolist())
+                        month_res[var][month].extend(res.tolist())
 
                 elif subseason:
                     idx = [i for i in df.index if i.dayofyear in subseason_doy]
@@ -131,6 +144,11 @@ def residuals(stations, station_data, gridded_data, station_residuals, all_resid
                     df[f'eto_{model}'] = gdf.loc[df.index, 'eto'].values
                     eto_residuals = df['eto_station'] - df[f'eto_{model}']
                     doy = [int(i.dayofyear) for i in df.index]
+                    if var == 'eto':
+                        r2 = r2_score(df['eto_station'], df[f'eto_{model}'])
+                        print(f'{len(eto_residuals)} samples: mean eto resuidual '
+                              f'(station - model): {eto_residuals.mean():.3f}\n'
+                              f'r2: {r2:.2f}')
 
                     sta_res[var] = [list(residuals), list(eto_residuals), doy]
                     all_res_dict[var] += list(residuals)
@@ -140,6 +158,13 @@ def residuals(stations, station_data, gridded_data, station_residuals, all_resid
                 eto_estimates['station'].extend(df['eto_station'].to_list())
 
             errors[fid] = sta_res.copy()
+            if residual_csv:
+                res_csv = os.path.join(residual_csv, f'res_{fid}.csv')
+                res_dct = {k: v[0] for k, v in sta_res.items()}
+                res_df = pd.DataFrame().from_dict(res_dct)
+                res_df.index = df.index
+                res_df['date'] = res_df.index
+                res_df.to_csv(res_csv)
 
         except Exception as e:
             print('Exception raised on {}, {}'.format(fid, e))
@@ -271,24 +296,24 @@ if __name__ == '__main__':
                                    'final_milk_river_metadata_nldas_eto_bias_ratios_long_term_mean.csv')
     sta_data = os.path.join(d, 'weather_station_data_processing', 'corrected_data')
 
-    model_ = 'gridmet'
+    model_ = 'nldas2'
     grid_data = os.path.join(d, 'weather_station_data_processing', 'gridded', model_)
     res_json = os.path.join(d, 'weather_station_data_processing', 'error_analysis',
                             'all_residuals_{}.json'.format(model_))
     sta_res = os.path.join(d, 'weather_station_data_processing', 'error_analysis',
                            'station_residuals_{}.json'.format(model_))
 
-    comparison_js = os.path.join(d, 'weather_station_data_processing', 'comparison_data',
-                                 'eto_all_{}.json'.format(model_))
+    comp_data = os.path.join(d, 'weather_station_data_processing', 'comparison_data')
+    comparison_js = os.path.join(comp_data, 'eto_all_{}.json'.format(model_))
 
-    residuals(station_meta, sta_data, grid_data, sta_res, res_json, model=model_, monthly=False, annual=False,
-              location='south', subseason='summer', comparison_out=comparison_js)
+    # residuals(station_meta, sta_data, grid_data, sta_res, res_json, model=model_, monthly=False, annual=False,
+    #           location='south', subseason='summer', comparison_out=comparison_js)
 
     # residuals(station_meta, sta_data, grid_data, sta_res, res_json, model=model_, monthly=False, annual=False,
     #           location=None, subseason='winter', comparison_out=comparison_js)
     #
-    # residuals(station_meta, sta_data, grid_data, sta_res, res_json, model='gridmet', monthly=False, annual=False,
-    #           location=None, subseason=None, comparison_out=comparison_js)
+    residuals(station_meta, sta_data, grid_data, sta_res, res_json, model=model_, monthly=False, annual=False,
+              location=None, subseason=None, comparison_out=comparison_js, residual_csv=comp_data)
     #
     # residuals(station_meta, sta_data, grid_data, sta_res, res_json, model=model_, monthly=False, annual=False,
     #           location=None, subseason=None, comparison_out=comparison_js)

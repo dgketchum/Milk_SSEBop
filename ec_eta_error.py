@@ -44,7 +44,7 @@ def ec_comparison(stations, station_data, daily_rs_dir, monthly_rs_dir, out_file
 
     meta = station_list.copy()
 
-    results_dict, months_dict = {}, {}
+    results_dict, months_dict, adf_eta = {}, {}, None
     for i, (fid, row) in enumerate(station_list.iterrows()):
 
         # if fid != 'CA-Let':
@@ -85,7 +85,11 @@ def ec_comparison(stations, station_data, daily_rs_dir, monthly_rs_dir, out_file
 
             return eto
 
-        asce_params = sdf.parallel_apply(calc_asce_params, zw=10.0, axis=1)
+        try:
+            asce_params = sdf.parallel_apply(calc_asce_params, zw=10.0, axis=1)
+        except AttributeError as exc:
+            asce_params = sdf.apply(calc_asce_params, zw=10.0, axis=1)
+
         sdf[['eto']] = pd.DataFrame(asce_params.tolist(), index=sdf.index)
 
         rsdf_file_daily = os.path.join(daily_rs_dir,
@@ -122,6 +126,11 @@ def ec_comparison(stations, station_data, daily_rs_dir, monthly_rs_dir, out_file
 
         eta_df = df[['eta_obs', 'eta_ssebop']].copy()
         eta_df.dropna(how='any', axis=0, inplace=True)
+
+        if adf_eta is None:
+            adf_eta = eta_df.copy()
+        else:
+            adf_eta = pd.concat([adf_eta, eta_df], ignore_index=True)
 
         eto_df = df[['eto_obs', 'eto_nldas']].copy()
         eto_df.dropna(how='any', axis=0, inplace=True)
@@ -214,7 +223,7 @@ if __name__ == '__main__':
     if not os.path.isdir(d):
         d = '/home/dgketchum/data/IrrigationGIS/milk'
 
-    pandarallel.initialize(nb_workers=4)
+    # pandarallel.initialize(nb_workers=4)
 
     sta = os.path.join(d, 'eddy_covariance_data_processing', 'eddy_covariance_stations.csv')
 
