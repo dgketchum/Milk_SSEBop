@@ -5,7 +5,14 @@ for Water Management in the Milk River Basin
 Ketchum, D., Minor, B., Morton, C., Dunkerly, C., Spence, C., Sando, R.
 
 This repository contains the analysis code for the manuscript submitted
-to GIScience & Remote Sensing. The corresponding data release is:
+to GIScience & Remote Sensing.
+
+
+DATA
+----
+
+Eddy covariance flux tower data collected by Environment and Climate
+Change Canada (ECCC) in the Milk River basin are available via:
 
     Sando, R., Spence, C., Minor, B., Morton, C. (2026).
     Evapotranspiration and associated meteorological data collected
@@ -13,21 +20,22 @@ to GIScience & Remote Sensing. The corresponding data release is:
     2022-2024. U.S. Geological Survey data release.
     https://doi.org/10.5066/P1AEOEBW
 
+All other data required to reproduce the analysis (weather station
+observations, NLDAS-2 extracts, SSEBop ET extracts, bias correction
+metadata, and eddy covariance validation comparisons) will be provided
+in a companion data release accompanying the published manuscript.
+
 
 OVERVIEW
 --------
 
 The SSEBop evapotranspiration (ETa) rasters were produced in Google
 Earth Engine using the open-source openet-core and openet-ssebop
-libraries (Melton et al. 2022). The monthly ETa image collection is
-archived as a GEE asset at:
-
-    projects/dri-milkriver/assets/ssebop/nldas/monthly/v0_0
-
-The code in this repository performs the post-hoc error analysis,
-Monte Carlo variance decomposition, bias correction evaluation, eddy
-covariance validation, and figure generation described in the paper.
-It does NOT re-run the SSEBop model itself.
+libraries (Melton et al. 2022). The code in this repository performs
+the post-hoc error analysis, Monte Carlo variance decomposition, bias
+correction evaluation, eddy covariance validation, and figure
+generation described in the paper. It does NOT re-run the SSEBop
+model itself.
 
 
 DATA REQUIREMENTS
@@ -71,8 +79,8 @@ the --data-dir command-line argument. The required layout is:
         └── et_results/
             └── SMM_ET_Large.png            (optional map for Figure 5b)
 
-The corrected weather station data and eddy covariance data referenced
-here are provided via the USGS data release (Sando et al. 2026).
+All input data are provided in the companion data release. Directories
+marked "(output)" are created by the analysis scripts.
 
 
 ENVIRONMENT SETUP
@@ -99,12 +107,12 @@ REPRODUCING THE MAIN FINDINGS
 
 All commands assume `conda activate milk` and that the working
 directory is the repository root. Replace DATA_DIR with the path
-to your local copy of the data directory.
+to your local copy of the companion data release.
 
-Step 0a. Extract gridded meteorology at station locations
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-If you do not already have per-station NLDAS-2 or gridMET CSV files
-in weather_station_data_processing/gridded/, generate them:
+Step 0. Extract gridded meteorology at station locations (optional)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Per-station NLDAS-2 and gridMET CSV files are included in the data
+release. To regenerate them from source:
 
     python gridded_met/extract_gridded.py --data-dir DATA_DIR --model nldas2
     python gridded_met/extract_gridded.py --data-dir DATA_DIR --model gridmet
@@ -113,28 +121,6 @@ This downloads NLDAS-2 hourly data via pynldas2 (or gridMET via
 THREDDS), resamples to daily, computes ASCE ETo, and writes one CSV
 per station. Requires internet access and, for NLDAS-2, an Earthdata
 login configured for pynldas2.
-
-Step 0b. Export SSEBop ET zonal statistics from Google Earth Engine
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-The monthly land-cover-stratified ET summary CSVs used in the time
-series analysis (results/et_extracts/) are produced by the GEE
-export script:
-
-    python ee_api/call_ee.py
-
-By default this exports 936 CSV files (12 months x 39 years x 2
-tables) to a Google Drive folder named "et_extracts". Download the
-CSVs from Drive and place them in <data-dir>/results/et_extracts/.
-
-Options:
-  --project PROJECT     GEE project ID (default: ssebop-montana)
-  --bucket BUCKET       Export to a GCS bucket instead of Drive
-  --drive-folder NAME   Drive folder name (default: et_extracts)
-  --start-year YEAR     Start year (default: 1985)
-  --end-year YEAR       End year, exclusive (default: 2024)
-
-This step requires authenticated access to Google Earth Engine and
-the GEE asset projects/dri-milkriver/assets/ssebop/nldas/monthly/v0_0.
 
 Step 1. ETo residual analysis (Section 3.1, Figure 2)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -198,8 +184,7 @@ Step 6. ETa time series and volumetric summaries (Section 3.2, Figure 5)
     python timeseries.py --data-dir DATA_DIR
 
 Compiles monthly ET extracts by land cover class (forest, grassland,
-cropland) and generates time series plots. Requires the ET extract
-CSVs from Step 0b.
+cropland) and generates time series plots.
 
 Step 7. Publication figures (Figures 2-5)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -224,23 +209,9 @@ harmonize_comparison_units.py  Unit harmonization for EC comparison CSVs
 nldas_eto_error.py         Alternate NLDAS-2 error analysis (FFT variant)
 nldas_eto_monte_carlo.py   Alternate MC with FFT-based synthetic errors
 
-
-GOOGLE EARTH ENGINE COMPONENTS
--------------------------------
-
-The scripts in ee_api/ were used to produce the SSEBop ETa dataset
-and are provided for reference. They require authenticated access to
-Google Earth Engine and the following GEE assets:
-
-    projects/dri-milkriver/assets/ssebop/nldas/monthly/v0_0
-    projects/ee-dgketchum/assets/milk/smm_multi_aea
-
-ee_api/call_ee.py     Export monthly ET and land cover zonal statistics
-                      from GEE to Google Drive (default) or Google Cloud
-                      Storage. This produced the 468 monthly ETa summaries
-                      and land-cover-stratified ET CSVs used in the
-                      analysis.
-ee_api/landcover.py   Remap AAFC/CDL crop codes to the six-class scheme.
+ee_api/call_ee.py and ee_api/landcover.py were used internally to
+produce the SSEBop ETa zonal statistics in Google Earth Engine. The
+pre-computed outputs are included in the companion data release.
 
 
 WEATHER STATION QA/QC
@@ -260,8 +231,8 @@ Usage:
 REPRODUCIBILITY SUMMARY
 -------------------------
 
-To reproduce the main quantitative findings from raw intermediate data,
-set D to your data directory path and run:
+To reproduce the main quantitative findings from the companion data
+release, set D to your data directory path and run:
 
     conda activate milk
     D=/path/to/data
