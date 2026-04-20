@@ -233,10 +233,7 @@ and are provided for reference. They require authenticated access to
 Google Earth Engine and the following GEE assets:
 
     projects/dri-milkriver/assets/ssebop/nldas/monthly/v0_0
-    projects/ee-dgketchum/assets/milk/smm_dissolve
     projects/ee-dgketchum/assets/milk/smm_multi_aea
-    projects/usgs-gee-nhm-ssebop/assets/ssebop/landsat/c02
-    projects/openet/ssebop/landsat/c02
 
 ee_api/call_ee.py     Export monthly ET and land cover zonal statistics
                       from GEE to Google Drive (default) or Google Cloud
