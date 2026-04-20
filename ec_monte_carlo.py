@@ -179,26 +179,26 @@ def variance_decomposition(sim_results, station_meta, decomp_out):
 
 
 if __name__ == '__main__':
+    import argparse
 
-    d = '/media/research/IrrigationGIS/milk'
-    if not os.path.isdir(d):
-        d = '/home/dgketchum/data/IrrigationGIS/milk'
+    parser = argparse.ArgumentParser(description='Monte Carlo ETa variance decomposition (ETf vs ETo).')
+    parser.add_argument('--data-dir', required=True, help='Root data directory')
+    parser.add_argument('--num-samples', type=int, default=1000)
+    parser.add_argument('--workers', type=int, default=4)
+    args = parser.parse_args()
 
-    pandarallel.initialize(nb_workers=4)
+    d = args.data_dir
+    pandarallel.initialize(nb_workers=args.workers)
 
     sta = os.path.join(d, 'eddy_covariance_data_processing', 'eddy_covariance_stations.csv')
 
-    sta_data = os.path.join(d, 'eddy_covariance_data_processing', 'corrected_data')
-    ssebop_data = os.path.join(d, 'validation', 'daily_overpass_date_ssebop_et_at_eddy_covar_sites')
-
-    num_sample_ = 1000
+    num_sample_ = args.num_samples
     error_json = os.path.join(d, 'validation', 'error_analysis', 'ec_comparison.json')
     var_json = os.path.join(d, 'validation', 'error_analysis', 'ec_variance_{}.json'.format(num_sample_))
 
     mc_timeseries_draw(error_json, sta, var_json, num_samples=num_sample_)
 
     decomp = os.path.join(d, 'validation', 'error_analysis', 'var_decomp_stations.csv')
-    sta = os.path.join(d, 'eddy_covariance_data_processing', 'eddy_covariance_stations.csv')
     variance_decomposition(var_json, sta, decomp)
 
 # ========================= EOF ====================================================================

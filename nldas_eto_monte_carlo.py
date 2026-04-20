@@ -172,34 +172,33 @@ def estimate_error_dist(res):
 
 
 if __name__ == '__main__':
+    import argparse
 
-    d = '/media/research/IrrigationGIS/milk'
-    if not os.path.isdir(d):
-        d = '/home/dgketchum/data/IrrigationGIS/milk'
+    parser = argparse.ArgumentParser(description='NLDAS-2 Monte Carlo ETo analysis (FFT variant).')
+    parser.add_argument('--data-dir', required=True, help='Root data directory')
+    parser.add_argument('--num-samples', type=int, default=100)
+    parser.add_argument('--workers', type=int, default=10)
+    args = parser.parse_args()
 
-    sta = os.path.join(d, 'bias_ratio_data_processing/ETo/'
-                          'final_milk_river_metadata_nldas_eto_bias_ratios_long_term_mean.csv')
+    d = args.data_dir
+    pandarallel.initialize(nb_workers=args.workers)
+
+    sta = os.path.join(d, 'bias_ratio_data_processing', 'ETo',
+                       'final_milk_river_metadata_nldas_eto_bias_ratios_long_term_mean.csv')
 
     model_ = 'nldas2'
     grid_data = os.path.join(d, 'weather_station_data_processing', 'gridded', model_)
-    sta_res = os.path.join(d, 'weather_station_data_processing', 'error_analysis',
-                           'station_residuals_{}.json'.format(model_))
 
-    pandarallel.initialize(nb_workers=10)
+    num_sampl_ = args.num_samples
 
-    num_sampl_ = 100
     variance_json = os.path.join(d, 'weather_station_data_processing', 'error_analysis',
                                  'eto_variance_{}_tprop.json'.format(num_sampl_))
     mc_timeseries_draw(sta, grid_data, variance_json, station_type='agri', num_samples=num_sampl_,
                        propogate_temp=True)
 
-    num_sampl_ = 100
     variance_json = os.path.join(d, 'weather_station_data_processing', 'error_analysis',
                                  'eto_variance_{}_notprop.json'.format(num_sampl_))
     mc_timeseries_draw(sta, grid_data, variance_json, station_type='agri', num_samples=num_sampl_,
                        propogate_temp=False)
-
-    # decomp = os.path.join(d, 'weather_station_data_processing', 'error_analysis', 'var_decomp_stations_notprop.csv')
-    # variance_decomposition(variance_json, sta, decomp, station_type='agri')
 
 # ========================= EOF ====================================================================

@@ -63,13 +63,15 @@ def write_partial_dependence_plot(json_filepath):
 
 
 if __name__ == '__main__':
+    import argparse
 
-    d = '/media/research/IrrigationGIS/milk'
-    if not os.path.isdir(d):
-        d = '/home/dgketchum/data/IrrigationGIS/milk'
+    parser = argparse.ArgumentParser(description='Partial dependence plots of ETo on input variables.')
+    parser.add_argument('--data-dir', required=True, help='Root data directory')
+    args = parser.parse_args()
+
+    d = args.data_dir
 
     results_json = os.path.join(d, 'weather_station_data_processing', 'error_analysis', 'error_propagation_etovar.json')
-
     write_partial_dependence_plot(results_json)
 
 # ========================= EOF ====================================================================

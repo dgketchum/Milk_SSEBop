@@ -790,14 +790,6 @@ def _write_stats_doc(all_stats, out_dir):
 def _resolve_data_dir(cli_arg=None):
     if cli_arg and os.path.isdir(cli_arg):
         return cli_arg
-    candidates = [
-        '/media/research/IrrigationGIS/milk',
-        os.path.join(os.path.expanduser('~'), 'data', 'IrrigationGIS', 'milk'),
-        '/mnt/mco_nas1/dgketchum/milk',
-    ]
-    for c in candidates:
-        if os.path.isdir(c):
-            return c
     raise FileNotFoundError('Could not locate data directory. '
                             'Pass --data_dir explicitly.')
 

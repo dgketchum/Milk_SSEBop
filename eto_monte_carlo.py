@@ -228,24 +228,23 @@ def calc_eto(r, mod_var, elev, lat):
 
 
 if __name__ == '__main__':
+    import argparse
 
-    d = '/media/research/IrrigationGIS/milk'
-    if not os.path.isdir(d):
-        d = '/home/dgketchum/data/IrrigationGIS/milk'
-    if not os.path.isdir(d):
-        d = '/mnt/mco_nas1/dgketchum/milk'
+    parser = argparse.ArgumentParser(description='Monte Carlo variance decomposition of ETo error.')
+    parser.add_argument('--data-dir', required=True, help='Root data directory')
+    parser.add_argument('--model', default='nldas2', choices=['nldas2', 'gridmet'])
+    parser.add_argument('--num-samples', type=int, default=10000)
+    args = parser.parse_args()
 
-    sta = os.path.join(d, 'bias_ratio_data_processing/ETo/'
-                          'final_milk_river_metadata_nldas_eto_bias_ratios_long_term_mean.csv')
+    d = args.data_dir
 
-    model_ = 'nldas2'
+    sta = os.path.join(d, 'bias_ratio_data_processing', 'ETo',
+                       'final_milk_river_metadata_nldas_eto_bias_ratios_long_term_mean.csv')
+
+    model_ = args.model
     grid_data = os.path.join(d, 'weather_station_data_processing', 'gridded', model_)
-    sta_res = os.path.join(d, 'weather_station_data_processing', 'error_analysis',
-                           'station_residuals_{}.json'.format(model_))
 
-    # pandarallel.initialize(nb_workers=10)
-
-    num_sampl_ = 10000
+    num_sampl_ = args.num_samples
     variance_json = os.path.join(d, 'weather_station_data_processing', 'error_analysis', 'mc_par_variance')
     res_file_dir = os.path.join(d, 'weather_station_data_processing', 'comparison_data')
     mc_timeseries_draw(sta, grid_data, variance_json, res_file_dir, station_type='agri',

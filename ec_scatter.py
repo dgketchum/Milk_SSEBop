@@ -75,13 +75,15 @@ def plot_results(results_file, fig_file):
 
 
 if __name__ == '__main__':
+    import argparse
 
-    d = '/media/research/IrrigationGIS/milk'
-    if not os.path.isdir(d):
-        d = '/home/dgketchum/data/IrrigationGIS/milk'
+    parser = argparse.ArgumentParser(description='EC validation scatter plot.')
+    parser.add_argument('--data-dir', required=True, help='Root data directory')
+    args = parser.parse_args()
+
+    d = args.data_dir
 
     error_json = os.path.join(d, 'validation', 'error_analysis', 'ec_comparison.json')
-
     out_fig = os.path.join(d, 'validation', 'plots', 'all_ec_woFPe.png')
     plot_results(error_json, out_fig)
 

@@ -284,19 +284,20 @@ def check_file(lat, elev):
 
 
 if __name__ == '__main__':
+    import argparse
 
-    d = '/media/research/IrrigationGIS/milk'
-    if not os.path.isdir(d):
-        home = os.path.expanduser('~')
-        d = os.path.join(home, 'data', 'IrrigationGIS', 'milk')
+    parser = argparse.ArgumentParser(description='Compute ETo residuals between station observations and gridded data.')
+    parser.add_argument('--data-dir', required=True, help='Root data directory')
+    parser.add_argument('--model', default='nldas2', choices=['nldas2', 'gridmet'])
+    args = parser.parse_args()
 
-    # pandarallel.initialize(nb_workers=4)
+    d = args.data_dir
 
-    station_meta = os.path.join(d, 'bias_ratio_data_processing/ETo/'
-                                   'final_milk_river_metadata_nldas_eto_bias_ratios_long_term_mean.csv')
+    station_meta = os.path.join(d, 'bias_ratio_data_processing', 'ETo',
+                                'final_milk_river_metadata_nldas_eto_bias_ratios_long_term_mean.csv')
     sta_data = os.path.join(d, 'weather_station_data_processing', 'corrected_data')
 
-    model_ = 'nldas2'
+    model_ = args.model
     grid_data = os.path.join(d, 'weather_station_data_processing', 'gridded', model_)
     res_json = os.path.join(d, 'weather_station_data_processing', 'error_analysis',
                             'all_residuals_{}.json'.format(model_))
@@ -306,28 +307,7 @@ if __name__ == '__main__':
     comp_data = os.path.join(d, 'weather_station_data_processing', 'comparison_data')
     comparison_js = os.path.join(comp_data, 'eto_all_{}.json'.format(model_))
 
-    # residuals(station_meta, sta_data, grid_data, sta_res, res_json, model=model_, monthly=False, annual=False,
-    #           location='south', subseason='summer', comparison_out=comparison_js)
-
-    # residuals(station_meta, sta_data, grid_data, sta_res, res_json, model=model_, monthly=False, annual=False,
-    #           location=None, subseason='winter', comparison_out=comparison_js)
-    #
     residuals(station_meta, sta_data, grid_data, sta_res, res_json, model=model_, monthly=False, annual=False,
               location=None, subseason=None, comparison_out=comparison_js, residual_csv=comp_data)
-    #
-    # residuals(station_meta, sta_data, grid_data, sta_res, res_json, model=model_, monthly=False, annual=False,
-    #           location=None, subseason=None, comparison_out=comparison_js)
-    #
-    # residuals(station_meta, sta_data, grid_data, sta_res, res_json, model=model_, monthly=False, annual=False,
-    #           location='south', subseason=None, comparison_out=comparison_js)
-    #
-    # residuals(station_meta, sta_data, grid_data, sta_res, res_json, model=model_, monthly=False, annual=False,
-    #           location='north', subseason=None, comparison_out=comparison_js)
-    #
-    # residuals(station_meta, sta_data, grid_data, sta_res, res_json, model=model_, monthly=True, annual=False,
-    #           location=None, subseason=None, comparison_out=comparison_js)
-    #
-    # residuals(station_meta, sta_data, grid_data, sta_res, res_json, model=model_, monthly=False, annual=True,
-    #           location=None, subseason=None, comparison_out=comparison_js)
 
 # ========================= EOF ====================================================================

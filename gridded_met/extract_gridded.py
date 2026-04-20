@@ -174,19 +174,22 @@ def gridmet_par_map():
 
 
 if __name__ == '__main__':
-    d = '/media/research/IrrigationGIS/milk'
-    if not os.path.isdir(d):
-        home = os.path.expanduser('~')
-        d = os.path.join(home, 'data', 'IrrigationGIS', 'milk')
+    import argparse
 
-    pandarallel.initialize(nb_workers=8)
+    parser = argparse.ArgumentParser(description='Extract gridded meteorology at weather station locations.')
+    parser.add_argument('--data-dir', required=True, help='Root data directory')
+    parser.add_argument('--model', default='nldas2', choices=['nldas2', 'gridmet'],
+                        help='Gridded dataset to extract (default: nldas2)')
+    parser.add_argument('--workers', type=int, default=8, help='Parallel workers (default: 8)')
+    args = parser.parse_args()
 
-    station_meta = os.path.join(d, 'bias_ratio_data_processing/ETo/'
-                                   'final_milk_river_metadata_nldas_eto_bias_ratios_long_term_mean.csv')
+    pandarallel.initialize(nb_workers=args.workers)
 
-    grid_data_dir = os.path.join(d, 'weather_station_data_processing', 'gridded')
+    station_meta = os.path.join(args.data_dir, 'bias_ratio_data_processing', 'ETo',
+                                'final_milk_river_metadata_nldas_eto_bias_ratios_long_term_mean.csv')
 
-    extract_gridded(station_meta, grid_data_dir, model='nldas2')
-    # extract_gridded(station_meta, grid_data_dir, model='gridmet')
+    grid_data_dir = os.path.join(args.data_dir, 'weather_station_data_processing', 'gridded')
+
+    extract_gridded(station_meta, grid_data_dir, model=args.model)
 
 # ========================= EOF ====================================================================

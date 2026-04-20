@@ -79,10 +79,13 @@ def compile_data(csv_dir, plot_dir):
 
 
 if __name__ == '__main__':
-    d = '/media/research/IrrigationGIS/milk'
-    if not os.path.isdir(d):
-        home = os.path.expanduser('~')
-        d = os.path.join(home, 'data', 'IrrigationGIS', 'milk')
+    import argparse
+
+    parser = argparse.ArgumentParser(description='Compile ET time series by land cover class.')
+    parser.add_argument('--data-dir', required=True, help='Root data directory')
+    args = parser.parse_args()
+
+    d = args.data_dir
 
     extracts = os.path.join(d, 'results', 'et_extracts')
     ts_out = os.path.join(d, 'results', 'timeseries_plots')

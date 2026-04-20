@@ -251,10 +251,13 @@ def flux_barplot(csv, out_file):
 
 
 if __name__ == '__main__':
+    import argparse
 
-    d = '/media/research/IrrigationGIS/milk'
-    if not os.path.isdir(d):
-        d = '/home/dgketchum/data/IrrigationGIS/milk'
+    parser = argparse.ArgumentParser(description='ETa scatter and time series plots.')
+    parser.add_argument('--data-dir', required=True, help='Root data directory')
+    args = parser.parse_args()
+
+    d = args.data_dir
 
     error_json = os.path.join(d, 'validation', 'error_analysis', 'ec_comparison.json')
 

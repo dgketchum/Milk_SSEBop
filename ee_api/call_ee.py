@@ -77,12 +77,14 @@ def get_rs_study_fc():
     return fc
 
 
-def export_gridded_data(tables, bucket, years, description, debug=False, clip_fc=None, join_col='STAID', **kwargs):
+def export_gridded_data(tables, years, description, debug=False, clip_fc=None, join_col='STAID',
+                        drive_folder=None, bucket=None, **kwargs):
     """
     Reduce Regions, i.e. zonal stats: takes a statistic from a raster within the bounds of a vector.
     Use this to get e.g. irrigated area within a county, HUC, or state. This can mask based on Crop Data Layer,
-    and can mask data where the sum of irrigated years is less than min_years. This will output a .csv to
-    GCS wudr bucket.
+    and can mask data where the sum of irrigated years is less than min_years.
+
+    Exports CSV tables to Google Drive (default) or Google Cloud Storage.
     """
     ee.Initialize()
     fc = ee.FeatureCollection(tables)
@@ -164,28 +166,22 @@ def export_gridded_data(tables, bucket, years, description, debug=False, clip_fc
                 et_data = et_data.getInfo()
                 lc_data = lc_data.getInfo()
 
-            out_desc = '{}_et_{}_{}'.format(description, yr, month)
-            task = ee.batch.Export.table.toCloudStorage(
-                et_data,
-                description=out_desc,
-                bucket=bucket,
-                fileNamePrefix=out_desc,
-                fileFormat='CSV',
-                selectors=[join_col] + et_bands)
-
-            task.start()
-
-            out_desc = '{}_lc_{}_{}'.format(description, yr, month)
-            task = ee.batch.Export.table.toCloudStorage(
-                lc_data,
-                description=out_desc,
-                bucket=bucket,
-                fileNamePrefix=out_desc,
-                fileFormat='CSV',
-                selectors=[join_col] + lc_bands)
-
-            task.start()
-            print(out_desc)
+            for data, bands_sel, suffix in [(et_data, et_bands, 'et'),
+                                              (lc_data, lc_bands, 'lc')]:
+                out_desc = '{}_{}_{}_{}'.format(description, suffix, yr, month)
+                if bucket:
+                    task = ee.batch.Export.table.toCloudStorage(
+                        data, description=out_desc, bucket=bucket,
+                        fileNamePrefix=out_desc, fileFormat='CSV',
+                        selectors=[join_col] + bands_sel)
+                else:
+                    folder = drive_folder or 'et_extracts'
+                    task = ee.batch.Export.table.toDrive(
+                        data, description=out_desc, folder=folder,
+                        fileNamePrefix=out_desc, fileFormat='CSV',
+                        selectors=[join_col] + bands_sel)
+                task.start()
+                print(out_desc)
 
 
 def export_mean_annual_raster(bucket, years, description, mask=None, clip_fc=None, resolution=30):
@@ -264,18 +260,21 @@ def count_images_used(csv):
 
 
 if __name__ == '__main__':
+    import argparse
+
+    parser = argparse.ArgumentParser(description='Export SSEBop ET zonal statistics from Google Earth Engine.')
+    parser.add_argument('--project', default='ssebop-montana', help='GEE project ID')
+    parser.add_argument('--bucket', default=None, help='GCS bucket (omit to export to Google Drive)')
+    parser.add_argument('--drive-folder', default='et_extracts',
+                        help='Google Drive folder name (default: et_extracts)')
+    parser.add_argument('--start-year', type=int, default=1985)
+    parser.add_argument('--end-year', type=int, default=2024, help='End year (exclusive)')
+    args = parser.parse_args()
+
     ee.Authenticate()
-    ee.Initialize(project='ssebop-montana')
+    ee.Initialize(project=args.project)
 
-    export_gridded_data(SMM_MULTI, 'wudr', years=[i for i in range(1985, 2024)],
-                        description='smm', debug=False, join_col='OBJECTID', **{'target_classes': [0, 1, 2, 3]})
-
-    # masks = [None, 1, 2, 3]
-    # for mask_ in masks:
-    #     export_mean_annual_raster('wudr', years=[i for i in range(1985, 1986)], clip_fc=None,
-    #                               description='smm', mask=mask_, resolution=30)
-    #     break
-
-    # c = '/media/research/IrrigationGIS/milk/ancillary/wrs2_study_area.csv'
-    # count_images_used(c)
+    export_gridded_data(SMM_MULTI, years=list(range(args.start_year, args.end_year)),
+                        description='smm', join_col='OBJECTID', target_classes=[0, 1, 2, 3],
+                        bucket=args.bucket, drive_folder=args.drive_folder)
 # ========================= EOF ================================================================================

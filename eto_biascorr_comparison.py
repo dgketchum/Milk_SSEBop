@@ -165,38 +165,32 @@ def plot_corrected(eto_uncorr, eto_corr, plot_dir, palette_idx=(8, 2)):
 
 
 if __name__ == '__main__':
+    import argparse
 
-    d = '/media/research/IrrigationGIS/milk'
-    if not os.path.isdir(d):
-        home = os.path.expanduser('~')
-        d = os.path.join(home, 'data', 'IrrigationGIS', 'milk')
+    parser = argparse.ArgumentParser(description='Evaluate ETo bias correction.')
+    parser.add_argument('--data-dir', required=True, help='Root data directory')
+    parser.add_argument('--model', default='nldas2', choices=['nldas2', 'gridmet'])
+    args = parser.parse_args()
 
-    # pandarallel.initialize(nb_workers=4)
+    d = args.data_dir
+    model_ = args.model
 
-    station_meta = os.path.join(d, 'bias_ratio_data_processing/ETo/'
-                                   'final_milk_river_metadata_nldas_eto_bias_ratios_long_term_mean.csv')
-
+    station_meta = os.path.join(d, 'bias_ratio_data_processing', 'ETo',
+                                'final_milk_river_metadata_nldas_eto_bias_ratios_long_term_mean.csv')
     sta_data = os.path.join(d, 'weather_station_data_processing', 'corrected_data')
-
-    model_ = 'nldas2'
     grid_data = os.path.join(d, 'weather_station_data_processing', 'gridded', model_)
-    res_json = os.path.join(d, 'weather_station_data_processing', 'error_analysis',
-                            'all_residuals_{}.json'.format(model_))
-    sta_res = os.path.join(d, 'weather_station_data_processing', 'error_analysis',
-                           'station_residuals_{}.json'.format(model_))
 
-    comparison_js = os.path.join(d, 'weather_station_data_processing', 'comparison_data', 'eto_{}.json'.format(model_))
+    comparison_js = os.path.join(d, 'weather_station_data_processing', 'comparison_data',
+                                 'eto_{}.json'.format(model_))
 
-    # corrected_eto(station_meta, sta_data, grid_data, comparison_js, apply_correction=True)
+    corrected_eto(station_meta, sta_data, grid_data, comparison_js, apply_correction=True)
 
     eto_json = os.path.join(d, 'weather_station_data_processing', 'comparison_data',
                             'eto_{}_uncorrected.json'.format(model_))
-
     eto_json2 = os.path.join(d, 'weather_station_data_processing', 'comparison_data',
                              'eto_{}_corrected.json'.format(model_))
 
     plot = os.path.join(d, 'weather_station_data_processing', 'error_analysis', 'uncorr_vs_corrected_eto')
-
     plot_corrected(eto_json, eto_json2, plot)
 
 # ========================= EOF ====================================================================

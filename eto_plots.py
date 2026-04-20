@@ -499,11 +499,13 @@ def plot_monthly_residuals(monthly_residuals, daily_residuals, variable_name, ou
 
 
 if __name__ == '__main__':
+    import argparse
 
-    d = '/media/research/IrrigationGIS/milk'
-    if not os.path.isdir(d):
-        home = os.path.expanduser('~')
-        d = os.path.join(home, 'data', 'IrrigationGIS', 'milk')
+    parser = argparse.ArgumentParser(description='Exploratory ETo residual plots.')
+    parser.add_argument('--data-dir', required=True, help='Root data directory')
+    args = parser.parse_args()
+
+    d = args.data_dir
 
     # All NLDAS-2 residual histogram ===============================================================
     res_json = os.path.join(d, 'weather_station_data_processing', 'error_analysis',

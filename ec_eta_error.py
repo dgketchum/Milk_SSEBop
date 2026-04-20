@@ -218,15 +218,15 @@ def get_full_month_indices(daily_df):
 
 
 if __name__ == '__main__':
+    import argparse
 
-    d = '/media/research/IrrigationGIS/milk'
-    if not os.path.isdir(d):
-        d = '/home/dgketchum/data/IrrigationGIS/milk'
+    parser = argparse.ArgumentParser(description='Eddy covariance ETa validation.')
+    parser.add_argument('--data-dir', required=True, help='Root data directory')
+    args = parser.parse_args()
 
-    # pandarallel.initialize(nb_workers=4)
+    d = args.data_dir
 
     sta = os.path.join(d, 'eddy_covariance_data_processing', 'eddy_covariance_stations.csv')
-
     sta_data = os.path.join(d, 'eddy_covariance_data_processing', 'corrected_data')
 
     daily_ssebop = os.path.join(d, 'validation', 'daily_overpass_date_ssebop_et_at_eddy_covar_sites')
@@ -236,7 +236,5 @@ if __name__ == '__main__':
     error_json_month = os.path.join(d, 'validation', 'error_analysis', 'ec_comparison_monthly.json')
 
     ec_comparison(sta, sta_data, daily_ssebop, monthly_ssebop, error_json, error_json_month)
-
-    # donwload_ec_nldas(sta, monthly_ssebop)
 
 # ========================= EOF ====================================================================

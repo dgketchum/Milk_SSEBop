@@ -118,16 +118,18 @@ def dri_refet(df, elev, lat):
 
 
 if __name__ == '__main__':
-    d = '/media/research/IrrigationGIS/milk'
-    if not os.path.isdir(d):
-        home = os.path.expanduser('~')
-        d = os.path.join(home, 'data', 'IrrigationGIS', 'milk')
+    import argparse
 
-    pandarallel.initialize(nb_workers=4)
+    parser = argparse.ArgumentParser(description='Verify ETo calculations from multiple NLDAS-2 sources.')
+    parser.add_argument('--data-dir', required=True, help='Root data directory')
+    parser.add_argument('--workers', type=int, default=4)
+    args = parser.parse_args()
 
-    station_meta = os.path.join(d, 'bias_ratio_data_processing/ETo/'
-                                   'final_milk_river_metadata_nldas_eto_bias_ratios_long_term_mean.csv')
+    d = args.data_dir
+    pandarallel.initialize(nb_workers=args.workers)
 
+    station_meta = os.path.join(d, 'bias_ratio_data_processing', 'ETo',
+                                'final_milk_river_metadata_nldas_eto_bias_ratios_long_term_mean.csv')
     sta_data = os.path.join(d, 'weather_station_data_update', 'corrected_data')
 
     model_ = 'nldas2'
